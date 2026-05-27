@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "@pcc/schemas": ["packages/schemas/src/index.ts"],
+      "@pcc/domain": ["packages/domain/src/index.ts"],
+      "@pcc/ui": ["packages/ui/src/index.ts"],
+      "@pcc/assistant": ["packages/assistant/src/index.ts"],
+      "@pcc/modules": ["packages/modules/src/index.ts"],
+      "@pcc/local-fs": ["packages/local-fs/src/index.ts"],
+      "@pcc/repo-analyzer": ["packages/repo-analyzer/src/index.ts"],
+      "@pcc/project-import": ["packages/project-import/src/index.ts"],
+      "@pcc/files": ["packages/files/src/index.ts"],
+      "@pcc/timeline": ["packages/timeline/src/index.ts"],
+      "@pcc/audit": ["packages/audit/src/index.ts"],
+      "@pcc/config": ["packages/config/src/index.ts"],
+      "@pcc/search": ["packages/search/src/index.ts"],
+      "@pcc/sync": ["packages/sync/src/index.ts"]
+    }
+  }
+}

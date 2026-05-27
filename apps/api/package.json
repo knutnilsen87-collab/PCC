@@ -1,0 +1,16 @@
+{
+  "name": "@pcc/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "echo dev:api",
+    "build": "echo build:api",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo test:api",
+    "lint": "echo lint:api"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
