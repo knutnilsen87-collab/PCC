@@ -10,4 +10,3 @@ target
 src-tauri/target
 *.zip
 *.torrent
-status_bundle.txt

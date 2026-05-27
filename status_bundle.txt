@@ -1,0 +1,186 @@
+# status_bundle.txt
+
+status_bundle_version: 1
+last_updated: 2026-05-27T22:04:26+02:00
+updated_by: codex
+project_name: Project Command Center
+run_id: pcc-button-fix-2026-05-27
+task_id: fix-dead-buttons-and-update-status-bundle
+branch: main
+commit_before: 62268d484aab67d7ced9cd9ba36eee16bc967b22
+commit_current: pending
+
+============================================================
+1. CURRENT STATE
+============================================================
+
+lifecycle_state:
+  value: verifying
+  explanation: Buttons were reported as non-functional. UI handlers were patched so every visible control either performs its action or gives user-visible feedback.
+
+status:
+  value: verifying
+  user_visible_summary: Button behavior has been fixed locally. Empty/no-op controls now respond visibly, and core navigation buttons were browser-smoke tested.
+  technical_summary: App.tsx updated for robust click feedback, localStorage persistence guard, visible Today import status, search command-bar focus, empty assistant feedback, no-name project creation, and quick-action fallbacks.
+
+progress_tracking:
+  phase: button-regression-fix
+  percent: 90
+  blocker: none
+  last_completed_step: typecheck, tests, build, and browser smoke passed after code patch
+  current_step: commit and push pending
+  next_step: commit patched App.tsx plus updated status_bundle.txt
+
+============================================================
+2. TASK AND SCOPE
+============================================================
+
+task:
+  user_request: "ingen av knappene fungerer. etter det er fikset oppdater status_bundle"
+  desired_outcome: Buttons visibly work or explain why an action cannot proceed, and status_bundle.txt records the transition.
+  non_goals:
+    - no schema changes
+    - no dependency changes
+    - no domain rewrite
+    - no folder import behavior beyond clearer feedback
+  constraints:
+    - preserve approval-based AI mutation behavior
+    - keep Project Command Center UI dark/calm
+    - use smallest safe fix
+
+scope_lock:
+  in_scope:
+    - apps/windows/src/App.tsx
+    - status_bundle.txt
+    - .gitignore entry for status_bundle.txt
+  out_of_scope:
+    - packages/domain public contracts
+    - packages/schemas public contracts
+    - dependencies
+    - broad UI redesign
+  allowed_change_types:
+    - code_patch
+    - status_patch
+    - config_patch
+  forbidden_change_types:
+    - broad_refactor_without_approval
+    - unrelated_cleanup
+    - hidden_behavior_change
+    - incompatible_contract_change
+  scope_change_required: false
+
+============================================================
+3. FACTS AND CAUSAL BRIDGE
+============================================================
+
+facts:
+  - User reported that none of the buttons work and provided a screenshot of the Today empty state at http://127.0.0.1:5173.
+  - Several visible controls previously had no user-visible effect in common states: sidebar Create with empty name returned early, empty Run delegated to assistant text only after command handling, Search had no handler, Today did not render ImportProgress, and some quick actions had label mismatches.
+  - Browser smoke after patch confirmed Run, Search, Create, Open repo, and Back to project all produced expected UI changes.
+
+causal_bridge:
+  problem_observed: Buttons appeared non-functional in the desktop browser UI.
+  hypothesized_cause: A mix of silent no-op handlers and invisible status feedback made clicks appear dead; localStorage persistence could also throw without being guarded.
+  change_made: Added visible fallback behavior for empty assistant submit/search/import/rescan, made empty Create create an Untitled project, rendered import progress in Today, handled Review project summary action, added Codex handoff fallback, and guarded localStorage writes.
+  expected_effect: All visible controls either trigger navigation/state changes or show a clear message explaining what is needed.
+  evidence_that_effect_happened:
+    - corepack pnpm typecheck: pass
+    - corepack pnpm test: pass, 31 tests
+    - corepack pnpm build: pass
+    - browser smoke: Run/Search/Create/Open repo/Back to project passed with no console errors
+  alternate_hypotheses:
+    - browser-specific File System Access picker availability may still require Chromium/Brave setting support
+    - stale dev server/cache could show old behavior until refresh
+  causality_confidence: high
+
+============================================================
+4. VERIFICATION STATE
+============================================================
+
+verification_state:
+  status: pass
+  must_check:
+    - check: typecheck
+      command_or_method: corepack pnpm typecheck
+      status: pass
+      evidence_ref: terminal output, apps/windows typecheck Done
+    - check: tests
+      command_or_method: corepack pnpm test
+      status: pass
+      evidence_ref: terminal output, 7 files passed, 31 tests passed
+    - check: build
+      command_or_method: corepack pnpm build
+      status: pass
+      evidence_ref: terminal output, Vite build completed
+    - check: button smoke
+      command_or_method: local browser automation at http://127.0.0.1:5173
+      status: pass
+      evidence_ref: Run/Search/Create/Open repo/Back to project state changes, no console errors
+
+verification_results:
+  tests:
+    command: corepack pnpm test
+    status: pass
+    summary: 31 tests passed
+  typecheck:
+    command: corepack pnpm typecheck
+    status: pass
+    summary: all targeted workspace packages passed
+  build:
+    command: corepack pnpm build
+    status: pass
+    summary: @pcc/windows Vite build passed
+  manual_review:
+    status: pass
+    notes: Browser smoke verified the main reported control path.
+
+coverage_assessment:
+  changed_behavior_covered: partial
+  changed_files_covered: partial
+  untested_risk_areas:
+    - real user File System Access picker confirmation cannot be automated here
+    - user's exact Brave profile/extensions/cache cannot be reproduced
+  false_green_risk: low
+  residual_risk: low
+
+============================================================
+5. REPO HEALTH
+============================================================
+
+repo_health:
+  status: preserved
+  structure_fit: good
+  ownership_fit: good
+  boundary_impact: low
+  duplication_risk: low
+  dependency_sprawl_risk: none
+  naming_consistency: preserved
+  temporary_mess_introduced:
+    value: false
+    cleanup_path: n/a
+  verdict: clean_success_allowed
+
+============================================================
+6. NEXT ACTION CONTRACT
+============================================================
+
+recommended_next_action:
+  type: verify_only
+  target: user browser at http://127.0.0.1:5173
+  instruction: Refresh the page hard if it still shows old behavior, then click Create, Run, Search, Open repo, and Back to project.
+  success_condition: Each click causes visible feedback or view transition.
+  verification: user confirms behavior in their browser
+
+fallback_action:
+  type: narrower_check
+  instruction: If a specific button still fails, capture the exact button name and whether the browser console shows an error.
+
+closure_readiness:
+  can_claim_success: true
+  terminal_state_candidate: succeeded
+  rationale: Code patch and automated/manual smoke verification passed.
+  remaining_unknowns:
+    - exact external browser profile behavior
+  follow_up_required:
+    - hard refresh or restart dev server if stale client bundle remains loaded
+  final_user_summary: Buttons now respond with visible feedback or perform the expected transition; status_bundle.txt has been updated.

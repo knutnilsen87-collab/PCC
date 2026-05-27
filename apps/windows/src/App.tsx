@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   Check,
@@ -89,6 +89,7 @@ export function App() {
   const [fileCategory, setFileCategory] = useState<AttachmentCategory>("docs");
   const [importState, setImportState] = useState<ImportState>({ status: "idle" });
   const [directoryHandles, setDirectoryHandles] = useState<Record<string, BrowserDirectoryHandle>>({});
+  const assistantInputRef = useRef<HTMLInputElement>(null);
 
   const activeProject = state.projects.find((project) => project.id === activeProjectId) ?? state.projects[0];
   const activeDisplayName = activeProject ? getProjectDisplayName(activeProject, getLatestAnalysisSnapshot(state, activeProject.id)) : undefined;
@@ -114,12 +115,12 @@ export function App() {
   }, [activeProject, analysis, blockers, resume]);
 
   function handleCreateProject() {
-    if (!projectName.trim()) return;
+    const name = projectName.trim() || "Untitled project";
     const nextState = createProject(state, {
-      name: projectName,
-      description: projectDescription,
-      priority: "high",
-      nextExactStep: "Capture the first session and define the next exact step.",
+      name,
+      description: projectDescription.trim() || "Private project workspace.",
+      priority: projectName.trim() ? "high" : "medium",
+      nextExactStep: projectName.trim() ? "Capture the first session and define the next exact step." : "Define the first useful next action.",
     });
     setState(nextState);
     setActiveProjectId(nextState.projects[0].id);
@@ -149,10 +150,12 @@ export function App() {
     try {
       const picker = (window as unknown as { showDirectoryPicker?: () => Promise<BrowserDirectoryHandle> }).showDirectoryPicker;
       if (!picker) {
+        const message = "Folder picker is not available in this browser. Use a Chromium-based browser with File System Access enabled, or create a project manually.";
         setImportState({
           status: "failed",
-          message: "This browser does not expose a folder picker. Run the app in Chromium/Edge or the future Tauri shell.",
+          message,
         });
+        setAssistantOutput(message);
         return;
       }
       const handle = await picker();
@@ -189,10 +192,12 @@ export function App() {
     if (!activeProject) return;
     const handle = directoryHandles[activeProject.id];
     if (!handle) {
+      const message = "Run deeper scan needs the same folder selected in this browser session. Re-import the folder to reconnect the read-only handle.";
       setImportState({
         status: "failed",
-        message: "Rescan needs the folder to be selected again after a browser reload. Import the same folder to reopen the existing project.",
+        message,
       });
+      setAssistantOutput(message);
       return;
     }
     setImportState({ status: "scanning", message: "Rescanning active project read-only..." });
@@ -234,6 +239,11 @@ export function App() {
   }
 
   function handleAssistantSubmit() {
+    if (!assistantInput.trim()) {
+      setAssistantOutput(activeProject ? "Type a command, or use a quick action for this project." : "Import a folder or create a project first, then ask the assistant for help.");
+      assistantInputRef.current?.focus();
+      return;
+    }
     const response = runAssistantCommand(
       state,
       {
@@ -272,7 +282,7 @@ export function App() {
       handleCreateResumeFromAnalysis();
       return;
     }
-    if (action === "Summarize project" && analysis) {
+    if ((action === "Summarize project" || action === "Review project summary") && analysis) {
       setAssistantOutput(friendlyProjectSummary(analysis));
       return;
     }
@@ -284,6 +294,10 @@ export function App() {
       setAssistantOutput(
         `Codex handoff draft: ${getProjectDisplayName(activeProject, analysis)}. Status: ${analysis.summary.statusSummary}. Next: ${analysis.recommendedNextStep ?? activeProject.nextExactStep ?? "Review analysis"}.`,
       );
+      return;
+    }
+    if (action === "Generate Codex handoff") {
+      setAssistantOutput("No analysis snapshot is available for a Codex handoff yet. Import or rescan a folder first.");
     }
   }
 
@@ -386,7 +400,14 @@ export function App() {
                 <FolderOpen size={16} /> Open repo
               </button>
             )}
-            <button type="button" title="Search">
+            <button
+              type="button"
+              title="Search"
+              onClick={() => {
+                setAssistantOutput("Search is handled through the command bar. Type what you want to find or ask.");
+                assistantInputRef.current?.focus();
+              }}
+            >
               <Search size={16} />
             </button>
             {viewMode !== "today" && activeProject?.status === "archived" ? (
@@ -411,6 +432,7 @@ export function App() {
             }}
             onImportFolder={handleImportFolder}
             onCreateProject={handleCreateEmptyProject}
+            importState={importState}
           />
         ) : viewMode === "repo" && activeProject ? (
           <RepoView
@@ -481,6 +503,7 @@ export function App() {
         )}
         <div className="assistant-input-row">
           <input
+            ref={assistantInputRef}
             value={assistantInput}
             onChange={(event) => setAssistantInput(event.target.value)}
             onKeyDown={(event) => {
@@ -537,12 +560,14 @@ function TodayView({
   onSelectProject,
   onImportFolder,
   onCreateProject,
+  importState,
 }: {
   state: AppState;
   activeProjectId?: string;
   onSelectProject: (projectId: string) => void;
   onImportFolder: () => void;
   onCreateProject: () => void;
+  importState: ImportState;
 }) {
   const projectRows = buildTodayProjectRows(state);
   const { activeCount, blockedCount, readyCount } = getTodaySummary(projectRows);
@@ -566,6 +591,7 @@ function TodayView({
             </button>
           </div>
         </div>
+        <ImportProgress state={importState} />
       </section>
     );
   }
@@ -595,6 +621,8 @@ function TodayView({
           </button>
         </section>
       )}
+
+      <ImportProgress state={importState} />
 
       <section className="today-section">
         <div className="section-heading-row">
@@ -1159,7 +1187,11 @@ function usePersistentState(): [AppState, (state: AppState) => void] {
 
   function persist(nextState: AppState) {
     setState(nextState);
-    window.localStorage.setItem(storageKey, JSON.stringify(nextState));
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(nextState));
+    } catch (error) {
+      console.warn("Project Command Center could not persist local state.", error);
+    }
   }
 
   return [state, persist];
