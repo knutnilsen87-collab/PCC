@@ -8,3 +8,6 @@ build
 .DS_Store
 target
 src-tauri/target
+*.zip
+*.torrent
+status_bundle.txt

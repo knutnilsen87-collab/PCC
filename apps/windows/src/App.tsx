@@ -41,11 +41,16 @@ import { buildLocalFolderImportDraft } from "@pcc/project-import";
 import type { AttachmentCategory, Project, ProjectAnalysisSnapshot } from "@pcc/schemas";
 import {
   friendlyProjectSummary,
+  buildTodayProjectRows,
   getAssistantQuickActions,
   getImportedProjectDisplayStatus,
+  getProjectDisplayName,
   getRecommendedAction,
   getSetupChecklist,
   getSetupProgressText,
+  getTodayRecommendation,
+  getTodaySummary,
+  type TodayProjectRow,
 } from "./importOverview";
 
 const storageKey = "pcc.local.state.v1";
@@ -68,21 +73,25 @@ type ImportState =
   | { status: "completed"; message: string }
   | { status: "cancelled" | "failed"; message: string };
 
+type ViewMode = "today" | "project" | "repo";
+
 export function App() {
   const [state, setState] = usePersistentState();
   const [activeProjectId, setActiveProjectId] = useState<string | undefined>(state.projects[0]?.id);
+  const [viewMode, setViewMode] = useState<ViewMode>("today");
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
   const [sessionSummary, setSessionSummary] = useState("");
   const [sessionNextStep, setSessionNextStep] = useState("");
   const [blockerTitle, setBlockerTitle] = useState("");
   const [assistantInput, setAssistantInput] = useState("");
-  const [assistantOutput, setAssistantOutput] = useState("Import a local folder or create an empty project to activate the command surface.");
+  const [assistantOutput, setAssistantOutput] = useState("Import a folder or create a project to start your command center.");
   const [fileCategory, setFileCategory] = useState<AttachmentCategory>("docs");
   const [importState, setImportState] = useState<ImportState>({ status: "idle" });
   const [directoryHandles, setDirectoryHandles] = useState<Record<string, BrowserDirectoryHandle>>({});
 
   const activeProject = state.projects.find((project) => project.id === activeProjectId) ?? state.projects[0];
+  const activeDisplayName = activeProject ? getProjectDisplayName(activeProject, getLatestAnalysisSnapshot(state, activeProject.id)) : undefined;
   const resume = activeProject ? getLatestResume(state, activeProject.id) : undefined;
   const analysis = activeProject ? getLatestAnalysisSnapshot(state, activeProject.id) : undefined;
   const blockers = activeProject ? activeOpenBlockers(state, activeProject.id) : [];
@@ -114,9 +123,25 @@ export function App() {
     });
     setState(nextState);
     setActiveProjectId(nextState.projects[0].id);
+    setViewMode("project");
     setProjectName("");
     setProjectDescription("");
-    setAssistantOutput(`Created ${nextState.projects[0].name}.`);
+    setAssistantOutput(`Project added: ${getProjectDisplayName(nextState.projects[0])}.`);
+  }
+
+  function handleCreateEmptyProject() {
+    const nextState = createProject(state, {
+      name: "Untitled project",
+      description: "Private project workspace.",
+      priority: "medium",
+      nextExactStep: "Define the first useful next action.",
+    });
+    setState(nextState);
+    setActiveProjectId(nextState.projects[0].id);
+    setViewMode("project");
+    setProjectName("");
+    setProjectDescription("");
+    setAssistantOutput("Project added. Define the first next action when you are ready.");
   }
 
   async function handleImportFolder() {
@@ -151,8 +176,11 @@ export function App() {
     const result = importLocalFolderProject(state, draft);
     setState(result.state);
     setActiveProjectId(result.projectId);
-    const message = result.duplicate ? `Opened existing import for ${draft.projectName}.` : `Imported ${draft.projectName} read-only.`;
-    setAssistantOutput(result.duplicate ? message : "Project imported. I can summarize status, suggest next step, or draft a Codex handoff.");
+    setViewMode("project");
+    const importedProject = result.state.projects.find((project) => project.id === result.projectId);
+    const displayName = importedProject ? getProjectDisplayName(importedProject, getLatestAnalysisSnapshot(result.state, result.projectId)) : draft.projectName;
+    const message = result.duplicate ? `Opened existing project: ${displayName}.` : `Project added: ${displayName}. Safe scan complete.`;
+    setAssistantOutput(result.duplicate ? message : "Project added. Ask for a summary, next step, resume snapshot, or Codex handoff.");
     setImportState({ status: "completed", message });
     return result;
   }
@@ -188,7 +216,7 @@ export function App() {
     setState(nextState);
     setSessionSummary("");
     setSessionNextStep("");
-    setAssistantOutput("Session ended and resume snapshot updated.");
+    setAssistantOutput("Session saved and resume snapshot updated.");
   }
 
   function handleCreateBlocker() {
@@ -211,13 +239,16 @@ export function App() {
       {
         activeWorkspaceId: state.workspace.id,
         activeProjectId: activeProject?.id,
-        currentScreen: activeProject ? "project" : "dashboard",
+        currentScreen: viewMode === "today" ? "dashboard" : viewMode,
         userPermissions: ["workspace.read", "project.read", "project.write"],
       },
       assistantInput,
     );
     if (response.state) setState(response.state);
-    if (response.targetProjectId) setActiveProjectId(response.targetProjectId);
+    if (response.targetProjectId) {
+      setActiveProjectId(response.targetProjectId);
+      setViewMode("project");
+    }
     setAssistantOutput(response.text);
     setAssistantInput("");
   }
@@ -232,7 +263,7 @@ export function App() {
       confidence: analysis.summary.confidence,
     });
     setState(nextState);
-    setAssistantOutput("I drafted a resume snapshot from the import analysis. Review it in Approvals before applying.");
+    setAssistantOutput("I drafted a resume snapshot. Review it before saving to project memory.");
   }
 
   function handleAssistantQuickAction(action: string) {
@@ -251,7 +282,7 @@ export function App() {
     }
     if (action === "Generate Codex handoff" && analysis) {
       setAssistantOutput(
-        `Codex handoff draft: ${activeProject.name}. Status: ${analysis.summary.statusSummary}. Next: ${analysis.recommendedNextStep ?? activeProject.nextExactStep ?? "Review analysis"}.`,
+        `Codex handoff draft: ${getProjectDisplayName(activeProject, analysis)}. Status: ${analysis.summary.statusSummary}. Next: ${analysis.recommendedNextStep ?? activeProject.nextExactStep ?? "Review analysis"}.`,
       );
     }
   }
@@ -273,7 +304,7 @@ export function App() {
       });
     }
     setState(nextState);
-    setAssistantOutput(`${files.length} file${files.length === 1 ? "" : "s"} imported into ${activeProject.name}.`);
+    setAssistantOutput(`${files.length} file${files.length === 1 ? "" : "s"} added to ${getProjectDisplayName(activeProject, analysis)}.`);
   }
 
   return (
@@ -307,14 +338,25 @@ export function App() {
         </section>
 
         <nav className="project-list" aria-label="Projects">
+          <button
+            type="button"
+            className={viewMode === "today" ? "project-button today-button active" : "project-button today-button"}
+            onClick={() => setViewMode("today")}
+          >
+            <span>Today</span>
+            <small>Daily command center</small>
+          </button>
           {state.projects.map((project) => (
             <button
               type="button"
               key={project.id}
-              className={project.id === activeProject?.id ? "project-button active" : "project-button"}
-              onClick={() => setActiveProjectId(project.id)}
+              className={project.id === activeProject?.id && viewMode !== "today" ? "project-button active" : "project-button"}
+              onClick={() => {
+                setActiveProjectId(project.id);
+                setViewMode("project");
+              }}
             >
-              <span>{project.name}</span>
+              <span>{getProjectDisplayName(project, getLatestAnalysisSnapshot(state, project.id))}</span>
               <small>
                 {project.origin === "local_folder_import"
                   ? getImportedProjectDisplayStatus({
@@ -334,19 +376,24 @@ export function App() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <span className="eyebrow">Active workspace</span>
-            <h1>{activeProject?.name ?? "No project selected"}</h1>
+            <span className="eyebrow">{viewMode === "today" ? "Private workspace" : viewMode === "repo" ? "Technical route" : "Project"}</span>
+            <h1>{viewMode === "today" ? "Today" : viewMode === "repo" ? "Repo" : activeDisplayName ?? "No project selected"}</h1>
           </div>
           <div className="top-actions">
-            <span className="status-pill">{health}</span>
+            <span className="status-pill">{viewMode === "today" ? "Start here" : viewMode === "repo" ? "Repo view" : health}</span>
+            {activeProject && viewMode !== "repo" && (
+              <button type="button" onClick={() => setViewMode("repo")}>
+                <FolderOpen size={16} /> Open repo
+              </button>
+            )}
             <button type="button" title="Search">
               <Search size={16} />
             </button>
-            {activeProject?.status === "archived" ? (
+            {viewMode !== "today" && activeProject?.status === "archived" ? (
               <button type="button" onClick={() => setState(restoreProject(state, activeProject.id))} title="Restore project">
                 <RotateCcw size={16} />
               </button>
-            ) : activeProject ? (
+            ) : viewMode !== "today" && activeProject ? (
               <button type="button" onClick={() => setState(archiveProject(state, activeProject.id))} title="Archive project">
                 <Archive size={16} />
               </button>
@@ -354,7 +401,26 @@ export function App() {
           </div>
         </header>
 
-        {activeProject ? (
+        {viewMode === "today" ? (
+          <TodayView
+            state={state}
+            activeProjectId={activeProjectId}
+            onSelectProject={(projectId) => {
+              setActiveProjectId(projectId);
+              setViewMode("project");
+            }}
+            onImportFolder={handleImportFolder}
+            onCreateProject={handleCreateEmptyProject}
+          />
+        ) : viewMode === "repo" && activeProject ? (
+          <RepoView
+            project={activeProject}
+            analysis={analysis}
+            onBackToProject={() => setViewMode("project")}
+            onRescan={handleRescanActiveProject}
+            onGenerateCodexHandoff={() => handleAssistantQuickAction("Generate Codex handoff")}
+          />
+        ) : activeProject ? (
           <ProjectSurface
             project={activeProject}
             resume={resume}
@@ -390,7 +456,7 @@ export function App() {
               <button type="button" className="primary" onClick={handleImportFolder}>
                 <FolderPlus size={16} /> Import folder
               </button>
-              <button type="button" onClick={() => setProjectName("Untitled project")}>
+              <button type="button" onClick={handleCreateEmptyProject}>
                 <Plus size={16} /> Create empty project
               </button>
             </div>
@@ -422,14 +488,14 @@ export function App() {
             }}
             placeholder={
               activeProject?.origin === "local_folder_import"
-                ? "Ask about this project, generate next step, rescan, or create a Codex handoff..."
+                ? "Ask about this project, create a next step, summarize status, or generate a Codex handoff."
                 : activeProject
-                  ? `Ask about ${activeProject.name}, or type "draft resume: ..."`
-                  : "Import a local folder or create an empty project first"
+                  ? `Ask about ${activeDisplayName}, or type "draft resume: ..."`
+                  : "Import a folder or create a project to start your command center."
             }
             aria-label="Assistant command"
           />
-          <button type="button" className="assistant-submit" onClick={handleAssistantSubmit}>
+          <button type="button" className={assistantInput.trim() ? "assistant-submit ready" : "assistant-submit"} onClick={handleAssistantSubmit}>
             <SquarePen size={16} /> Run
           </button>
         </div>
@@ -463,6 +529,221 @@ interface ProjectSurfaceProps {
   onAssistantQuickAction: (action: string) => void;
   onApprove: (approvalId: string) => void;
   onReject: (approvalId: string) => void;
+}
+
+function TodayView({
+  state,
+  activeProjectId,
+  onSelectProject,
+  onImportFolder,
+  onCreateProject,
+}: {
+  state: AppState;
+  activeProjectId?: string;
+  onSelectProject: (projectId: string) => void;
+  onImportFolder: () => void;
+  onCreateProject: () => void;
+}) {
+  const projectRows = buildTodayProjectRows(state);
+  const { activeCount, blockedCount, readyCount } = getTodaySummary(projectRows);
+  const recommended = getTodayRecommendation(projectRows);
+  const needsAttention = projectRows.filter((row) => row.hasAttention).slice(0, 4);
+  const ready = projectRows.filter((row) => row.status === "Ready to continue" && row.blockers.length === 0).slice(0, 4);
+
+  if (!projectRows.length) {
+    return (
+      <section className="today-view">
+        <div className="today-hero">
+          <span className="eyebrow">Today</span>
+          <h2>No projects yet.</h2>
+          <p>Import a folder or create your first project to start your command center.</p>
+          <div className="today-actions">
+            <button type="button" className="primary" onClick={onImportFolder}>
+              <FolderPlus size={16} /> Import folder
+            </button>
+            <button type="button" onClick={onCreateProject}>
+              <Plus size={16} /> Create project
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="today-view">
+      <div className="today-heading">
+        <span className="eyebrow">Today</span>
+        <h2>Good morning, Knut.</h2>
+        <p className="today-summary">
+          You have {activeCount} active project{activeCount === 1 ? "" : "s"}, {blockedCount} blocked project{blockedCount === 1 ? "" : "s"},
+          and {readyCount} project{readyCount === 1 ? "" : "s"} ready to resume.
+        </p>
+      </div>
+
+      {recommended && (
+        <section className="today-hero">
+          <div>
+            <span className="eyebrow">Best next move</span>
+            <h2>Resume {recommended.displayName}</h2>
+            <p>
+              <strong>Next:</strong> {recommended.nextStep}
+            </p>
+          </div>
+          <button type="button" className="primary" onClick={() => onSelectProject(recommended.project.id)}>
+            <ShieldCheck size={16} /> Resume project
+          </button>
+        </section>
+      )}
+
+      <section className="today-section">
+        <div className="section-heading-row">
+          <div>
+            <span className="eyebrow">Needs attention</span>
+            <h3>Review before resuming</h3>
+          </div>
+        </div>
+        <ProjectRows rows={needsAttention.length ? needsAttention : projectRows.slice(0, 3)} activeProjectId={activeProjectId} onSelectProject={onSelectProject} />
+      </section>
+
+      {ready.length > 0 && (
+        <section className="today-section">
+          <span className="eyebrow">Ready to continue</span>
+          <ProjectRows rows={ready} activeProjectId={activeProjectId} onSelectProject={onSelectProject} />
+        </section>
+      )}
+
+      <section className="today-section">
+        <span className="eyebrow">All projects</span>
+        <ProjectRows rows={projectRows} activeProjectId={activeProjectId} onSelectProject={onSelectProject} />
+      </section>
+    </section>
+  );
+}
+
+function ProjectRows({
+  rows,
+  activeProjectId,
+  onSelectProject,
+}: {
+  rows: TodayProjectRow[];
+  activeProjectId?: string;
+  onSelectProject: (projectId: string) => void;
+}) {
+  return (
+    <div className="project-row-list">
+      {rows.map((row) => (
+        <button
+          type="button"
+          key={row.project.id}
+          className={row.project.id === activeProjectId ? "project-row active" : "project-row"}
+          onClick={() => onSelectProject(row.project.id)}
+        >
+          <span className="project-row-title">
+            <span aria-hidden="true" className={`status-dot ${row.status === "Blocked" ? "danger" : row.status === "Ready to continue" ? "ready" : ""}`} />
+            {row.displayName}
+          </span>
+          <span className="project-row-meta">
+            {row.status} - Next: {row.nextStep}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function RepoView({
+  project,
+  analysis,
+  onBackToProject,
+  onRescan,
+  onGenerateCodexHandoff,
+}: {
+  project: Project;
+  analysis?: ProjectAnalysisSnapshot;
+  onBackToProject: () => void;
+  onRescan: () => void;
+  onGenerateCodexHandoff: () => void;
+}) {
+  const displayName = getProjectDisplayName(project, analysis);
+  const attention = [
+    ...(analysis?.blockers.map((blocker) => blocker.title) ?? []),
+    ...(analysis?.risks.filter((risk) => risk.severity !== "info").map((risk) => risk.title) ?? []),
+    ...(analysis?.warnings.map((warning) => warning.message) ?? []),
+    ...(analysis?.skipped.map((item) => `${item.reason}: ${item.count}`) ?? []),
+  ];
+
+  return (
+    <section className="repo-view">
+      <div className="repo-header">
+        <div>
+          <span className="eyebrow">Repo</span>
+          <h2>{displayName}</h2>
+          <p>{project.localFolderPath ?? "Path unavailable. Re-import the folder to restore browser folder access."}</p>
+        </div>
+        <div className="repo-actions">
+          <button type="button" onClick={onBackToProject}>
+            Back to project
+          </button>
+          <button type="button" onClick={onRescan}>
+            <RotateCcw size={16} /> Run deeper scan
+          </button>
+          <button type="button" onClick={onGenerateCodexHandoff}>
+            Generate Codex handoff
+          </button>
+        </div>
+      </div>
+
+      <section className="repo-meta-grid">
+        <article className="repo-section">
+          <span className="eyebrow">Project path</span>
+          <p>{project.localFolderPath ?? "Path unavailable. Re-import the folder to restore browser folder access."}</p>
+        </article>
+        <article className="repo-section">
+          <span className="eyebrow">Raw project name</span>
+          <p>{project.name}</p>
+        </article>
+        <article className="repo-section">
+          <span className="eyebrow">Scan status</span>
+          <p>{analysis ? `${analysis.files.totalFilesScanned} files scanned - ${analysis.files.totalFilesSkipped} skipped` : "No scan snapshot available."}</p>
+        </article>
+        <article className="repo-section">
+          <span className="eyebrow">Git</span>
+          <p>{analysis?.repo?.isGitRepo ? `Git repo${analysis.repo.branch ? ` - ${analysis.repo.branch}` : ""}` : "No Git metadata detected"}</p>
+        </article>
+      </section>
+
+      <section className="repo-section">
+        <span className="eyebrow">Stack</span>
+        <p>
+          {[...(analysis?.stack.detectedFrameworks ?? []), ...(analysis?.stack.detectedLanguages ?? [])].join(", ") || "No framework or language signals detected."}
+        </p>
+      </section>
+
+      <section className="repo-section">
+        <span className="eyebrow">Important files</span>
+        <ul className="repo-file-list">
+          {analysis?.files.importantFiles.slice(0, 10).map((file) => (
+            <li key={file.path}>
+              <strong>{formatFileName(file.path)}</strong>
+              <span>{file.reason}</span>
+            </li>
+          ))}
+          {!analysis?.files.importantFiles.length && <li>No important files were highlighted by the latest safe scan.</li>}
+        </ul>
+      </section>
+
+      <section className="repo-section">
+        <span className="eyebrow">Attention</span>
+        <ul className="friendly-list">
+          {attention.slice(0, 10).map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+          {!attention.length && <li>No attention items in the latest scan.</li>}
+        </ul>
+      </section>
+    </section>
+  );
 }
 
 function ProjectSurface(props: ProjectSurfaceProps) {
@@ -671,43 +952,33 @@ function ImportedProjectOverview({
   const checklist = getSetupChecklist({ analysis, resume, nextStep: project.nextExactStep });
   const recommended = getRecommendedAction({ analysis, resume });
   const displayStatus = getImportedProjectDisplayStatus({ project, analysis, resume, openBlockers: blockers });
+  const displayName = getProjectDisplayName(project, analysis);
   const attention = analysis.blockers.length
     ? analysis.blockers.map((blocker) => blocker.title)
     : analysis.risks.filter((risk) => risk.severity !== "info").map((risk) => risk.title);
+  const missionItems = checklist.map((item) => {
+    if (item.label === "Folder imported") return { ...item, label: "Import complete" };
+    if (item.label === "Safe scan completed") return { ...item, label: "Safe scan complete" };
+    if (item.label === "Summary reviewed") return { ...item, label: item.complete ? "Summary reviewed" : "Summary pending" };
+    if (item.label === "Resume snapshot created") return { ...item, label: item.complete ? "Resume ready" : "Resume pending" };
+    return item;
+  });
 
   return (
-    <div className="project-surface imported-overview">
+    <div className="project-surface imported-overview command-canvas">
       <section className="imported-header">
         <div>
-          <span className="eyebrow">Project imported</span>
-          <h2>Project imported: {project.name}</h2>
+          <span className="eyebrow">Imported project</span>
+          <h2>{displayName}</h2>
+          <p className="quiet-body">Raw: {project.name}</p>
           <p>{friendlyProjectSummary(analysis)}</p>
         </div>
         <span className="status-pill">{displayStatus}</span>
       </section>
 
-      <ImportProgress state={importState} />
-
-      <section className="setup-checklist-card">
-        <div className="section-heading-row">
-          <div>
-            <span className="eyebrow">Setup progress</span>
-            <h3>{getSetupProgressText(checklist)}</h3>
-          </div>
-        </div>
-        <ul className="setup-checklist">
-          {checklist.map((item) => (
-            <li key={item.label} className={item.complete ? "complete" : ""}>
-              <span>{item.complete ? "Done" : ""}</span>
-              {item.label}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="next-action-card">
+      <section className="next-action-card resume-hero">
         <div>
-          <span className="eyebrow">What should happen next?</span>
+          <span className="eyebrow">Next action</span>
           <h3>{recommended.title}</h3>
           <p>{recommended.why}</p>
         </div>
@@ -723,16 +994,41 @@ function ImportedProjectOverview({
         </div>
       </section>
 
-      <section className="overview-grid">
-        <article className="overview-card">
-          <span className="eyebrow">Project summary</span>
+      <ImportProgress state={importState} />
+
+      <section className="setup-checklist-card mission-strip">
+        <span className="eyebrow">Setup progress</span>
+        <h3>{getSetupProgressText(checklist)}</h3>
+        <ol className="setup-checklist">
+          {missionItems.map((item) => (
+            <li key={item.label} className={item.complete ? "complete" : ""}>
+              <span>{item.complete ? "Done" : "Pending"}</span>
+              {item.label}
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="project-document">
+        <article className="overview-card context-card">
+          <span className="eyebrow">Context</span>
           <h3>{analysis.summary.statusSummary}</h3>
           <p>{analysis.summary.shortSummary}</p>
           <p className="quiet-body">{analysis.docs.readmeFiles.length ? "A README or project documentation was found." : "No README was found in the safe scan."}</p>
         </article>
 
         <article className="overview-card">
-          <span className="eyebrow">Important areas/files</span>
+          <span className="eyebrow">Attention</span>
+          <ul className="friendly-list">
+            {attention.slice(0, 5).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+            {!attention.length && <li>No immediate attention items found.</li>}
+          </ul>
+        </article>
+
+        <article className="overview-card">
+          <span className="eyebrow">Important files</span>
           <ul className="friendly-list">
             {analysis.files.importantFiles.slice(0, 5).map((file) => (
               <li key={file.path}>
@@ -741,16 +1037,6 @@ function ImportedProjectOverview({
               </li>
             ))}
             {!analysis.files.importantFiles.length && <li>No key files stood out in the safe scan.</li>}
-          </ul>
-        </article>
-
-        <article className="overview-card">
-          <span className="eyebrow">Attention needed</span>
-          <ul className="friendly-list">
-            {attention.slice(0, 3).map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-            {!attention.length && <li>No immediate attention items found.</li>}
           </ul>
         </article>
       </section>
