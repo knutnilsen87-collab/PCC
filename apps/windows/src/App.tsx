@@ -90,6 +90,7 @@ export function App() {
   const [importState, setImportState] = useState<ImportState>({ status: "idle" });
   const [directoryHandles, setDirectoryHandles] = useState<Record<string, BrowserDirectoryHandle>>({});
   const assistantInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const activeProject = state.projects.find((project) => project.id === activeProjectId) ?? state.projects[0];
   const activeDisplayName = activeProject ? getProjectDisplayName(activeProject, getLatestAnalysisSnapshot(state, activeProject.id)) : undefined;
@@ -150,12 +151,10 @@ export function App() {
     try {
       const picker = (window as unknown as { showDirectoryPicker?: () => Promise<BrowserDirectoryHandle> }).showDirectoryPicker;
       if (!picker) {
-        const message = "Folder picker is not available in this browser. Use a Chromium-based browser with File System Access enabled, or create a project manually.";
-        setImportState({
-          status: "failed",
-          message,
-        });
+        const message = "Choose a folder in the browser dialog. This fallback imports files read-only without keeping a rescan handle.";
+        setImportState({ status: "picking_folder", message });
         setAssistantOutput(message);
+        folderInputRef.current?.click();
         return;
       }
       const handle = await picker();
@@ -166,6 +165,51 @@ export function App() {
       const message = error instanceof DOMException && error.name === "AbortError" ? "Folder import cancelled." : error instanceof Error ? error.message : "Folder import failed.";
       setImportState({ status: message.includes("cancelled") ? "cancelled" : "failed", message });
     }
+  }
+
+  async function handleFolderInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files;
+    if (!files?.length) {
+      setImportState({ status: "cancelled", message: "Folder import cancelled." });
+      return;
+    }
+
+    try {
+      await importBrowserFileList(files);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Folder import failed.";
+      setImportState({ status: "failed", message });
+      setAssistantOutput(message);
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function importBrowserFileList(files: FileList) {
+    const firstPath = getBrowserFileRelativePath(files[0]);
+    const rootName = firstPath.includes("/") ? firstPath.split("/")[0] : "selected-folder";
+    setImportState({ status: "folder_selected", message: `Selected ${rootName}.` });
+    setImportState({ status: "scanning", message: "Reading safe metadata..." });
+    const entries = await collectBrowserFileEntries(files, rootName);
+    const displayPath = `[selected-folder]/${rootName}`;
+    const scan = scanVirtualEntries(displayPath, entries);
+    setImportState({ status: "analyzing", message: "Detecting repo status and project signals..." });
+    const draft = buildLocalFolderImportDraft(displayPath, scan);
+    setImportState({ status: "creating_project", message: "Creating project analysis..." });
+    const result = importLocalFolderProject(state, draft);
+    setState(result.state);
+    setActiveProjectId(result.projectId);
+    setViewMode("project");
+    const importedProject = result.state.projects.find((project) => project.id === result.projectId);
+    const displayName = importedProject ? getProjectDisplayName(importedProject, getLatestAnalysisSnapshot(result.state, result.projectId)) : draft.projectName;
+    const message = result.duplicate ? `Opened existing project: ${displayName}.` : `Project added: ${displayName}. Safe scan complete.`;
+    setAssistantOutput(
+      result.duplicate
+        ? message
+        : "Project added. This browser fallback cannot keep a rescan handle after reload, but the safe import is ready.",
+    );
+    setImportState({ status: "completed", message });
+    return result;
   }
 
   async function importDirectoryHandle(handle: BrowserDirectoryHandle) {
@@ -323,6 +367,16 @@ export function App() {
 
   return (
     <main className="app-shell" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>
+      <input
+        ref={folderInputRef}
+        type="file"
+        multiple
+        aria-hidden="true"
+        tabIndex={-1}
+        className="hidden-folder-input"
+        onChange={handleFolderInputChange}
+        {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+      />
       <aside className="sidebar">
         <div className="brand">
           <CircleDot aria-hidden="true" />
@@ -1211,6 +1265,53 @@ function formatFileName(path: string): string {
   const file = parts[parts.length - 1] ?? path;
   const parent = parts.length > 1 ? parts[parts.length - 2] : undefined;
   return parent ? `${parent}/${file}` : file;
+}
+
+async function collectBrowserFileEntries(files: FileList, rootName: string): Promise<ScannableEntry[]> {
+  const entries: ScannableEntry[] = [];
+  const seenDirectories = new Set<string>();
+
+  for (const file of Array.from(files)) {
+    const rawPath = getBrowserFileRelativePath(file);
+    const withoutRoot = rawPath.startsWith(`${rootName}/`) ? rawPath.slice(rootName.length + 1) : rawPath;
+    const relativePath = withoutRoot || file.name;
+    const directoryParts = relativePath.split("/").slice(0, -1);
+    let currentPath = "";
+
+    for (const part of directoryParts) {
+      currentPath = currentPath ? `${currentPath}/${part}` : part;
+      if (!seenDirectories.has(currentPath)) {
+        seenDirectories.add(currentPath);
+        entries.push({ path: currentPath, kind: "directory" });
+      }
+    }
+
+    const skipReason = shouldSkipPath(relativePath);
+    let content: string | undefined;
+    const canReadContent =
+      !skipReason &&
+      file.size <= DEFAULT_SCAN_POLICY.maxFileBytesForContentRead &&
+      (file.type.startsWith("text/") || /\.(json|md|ts|tsx|js|jsx|css|html|yaml|yml|toml|rs|go|py|sql)$/i.test(file.name));
+
+    if (canReadContent) {
+      content = await file.text();
+    }
+
+    entries.push({
+      path: relativePath,
+      kind: "file",
+      sizeBytes: file.size,
+      modifiedAt: new Date(file.lastModified).toISOString(),
+      content,
+      isBinary: Boolean(file.type && !file.type.startsWith("text/") && !/\.(json|md|ts|tsx|js|jsx|css|html|yaml|yml|toml|rs|go|py|sql)$/i.test(file.name)),
+    });
+  }
+
+  return entries;
+}
+
+function getBrowserFileRelativePath(file: File): string {
+  return (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
 }
 
 async function collectDirectoryEntries(handle: BrowserDirectoryHandle): Promise<ScannableEntry[]> {

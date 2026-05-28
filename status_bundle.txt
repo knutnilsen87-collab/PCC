@@ -1,13 +1,13 @@
 # status_bundle.txt
 
-status_bundle_version: 1
-last_updated: 2026-05-27T22:04:26+02:00
+status_bundle_version: 2
+last_updated: 2026-05-28T08:27:36+02:00
 updated_by: codex
 project_name: Project Command Center
-run_id: pcc-button-fix-2026-05-27
-task_id: fix-dead-buttons-and-update-status-bundle
+run_id: pcc-folder-fallback-2026-05-28
+task_id: fix-import-folder-fallback-and-update-status-bundle
 branch: main
-commit_before: 62268d484aab67d7ced9cd9ba36eee16bc967b22
+commit_before: 106d0efa2d023b8a08c41bce99fb60fdd8b2b810
 commit_current: pending
 
 ============================================================
@@ -16,28 +16,28 @@ commit_current: pending
 
 lifecycle_state:
   value: verifying
-  explanation: Buttons were reported as non-functional. UI handlers were patched so every visible control either performs its action or gives user-visible feedback.
+  explanation: Import folder still failed in Brave because showDirectoryPicker was unavailable. A webkitdirectory file input fallback has been added and verified in the DOM.
 
 status:
   value: verifying
-  user_visible_summary: Button behavior has been fixed locally. Empty/no-op controls now respond visibly, and core navigation buttons were browser-smoke tested.
-  technical_summary: App.tsx updated for robust click feedback, localStorage persistence guard, visible Today import status, search command-bar focus, empty assistant feedback, no-name project creation, and quick-action fallbacks.
+  user_visible_summary: Import folder now falls back to the browser's folder input when File System Access is unavailable. The fallback imports selected files read-only into the same analysis pipeline.
+  technical_summary: App.tsx now uses a hidden file input with webkitdirectory/directory attributes, converts FileList entries to ScannableEntry records, and imports via buildLocalFolderImportDraft/importLocalFolderProject.
 
 progress_tracking:
-  phase: button-regression-fix
+  phase: folder-import-fallback
   percent: 90
   blocker: none
-  last_completed_step: typecheck, tests, build, and browser smoke passed after code patch
+  last_completed_step: typecheck, tests, build, and DOM fallback smoke passed after code patch
   current_step: commit and push pending
-  next_step: commit patched App.tsx plus updated status_bundle.txt
+  next_step: commit patched App.tsx/styles.css plus updated status_bundle.txt
 
 ============================================================
 2. TASK AND SCOPE
 ============================================================
 
 task:
-  user_request: "ingen av knappene fungerer. etter det er fikset oppdater status_bundle"
-  desired_outcome: Buttons visibly work or explain why an action cannot proceed, and status_bundle.txt records the transition.
+  user_request: Screenshot showed Import folder error: folder picker unavailable; previous instruction also required status_bundle update after fixes.
+  desired_outcome: Import folder works in browsers without showDirectoryPicker by using a fallback folder input, and status_bundle.txt records the transition.
   non_goals:
     - no schema changes
     - no dependency changes
@@ -51,8 +51,8 @@ task:
 scope_lock:
   in_scope:
     - apps/windows/src/App.tsx
+    - apps/windows/src/styles.css
     - status_bundle.txt
-    - .gitignore entry for status_bundle.txt
   out_of_scope:
     - packages/domain public contracts
     - packages/schemas public contracts
@@ -74,22 +74,22 @@ scope_lock:
 ============================================================
 
 facts:
-  - User reported that none of the buttons work and provided a screenshot of the Today empty state at http://127.0.0.1:5173.
-  - Several visible controls previously had no user-visible effect in common states: sidebar Create with empty name returned early, empty Run delegated to assistant text only after command handling, Search had no handler, Today did not render ImportProgress, and some quick actions had label mismatches.
-  - Browser smoke after patch confirmed Run, Search, Create, Open repo, and Back to project all produced expected UI changes.
+  - User screenshot showed "Folder picker is not available in this browser" after clicking Import folder.
+  - Brave/Chromium contexts may not expose window.showDirectoryPicker, but can still support input type=file with webkitdirectory.
+  - DOM verification after patch confirmed hidden folder input exists with type=file, multiple, webkitdirectory, and directory attributes.
 
 causal_bridge:
-  problem_observed: Buttons appeared non-functional in the desktop browser UI.
-  hypothesized_cause: A mix of silent no-op handlers and invisible status feedback made clicks appear dead; localStorage persistence could also throw without being guarded.
-  change_made: Added visible fallback behavior for empty assistant submit/search/import/rescan, made empty Create create an Untitled project, rendered import progress in Today, handled Review project summary action, added Codex handoff fallback, and guarded localStorage writes.
-  expected_effect: All visible controls either trigger navigation/state changes or show a clear message explaining what is needed.
+  problem_observed: Import folder could not proceed because showDirectoryPicker was unavailable.
+  hypothesized_cause: The app only supported the File System Access API folder picker and had no fallback for browsers exposing only webkitdirectory file input.
+  change_made: Added hidden folder input fallback, FileList-to-ScannableEntry conversion, and browser-file import path through the existing read-only analysis pipeline.
+  expected_effect: Clicking Import folder opens a selectable folder dialog even when showDirectoryPicker is unavailable; selected files become a local-folder-import project.
   evidence_that_effect_happened:
     - corepack pnpm typecheck: pass
     - corepack pnpm test: pass, 31 tests
     - corepack pnpm build: pass
-    - browser smoke: Run/Search/Create/Open repo/Back to project passed with no console errors
+    - browser DOM smoke: hidden folder input has type=file, multiple, webkitdirectory, and directory attributes; no console errors
   alternate_hypotheses:
-    - browser-specific File System Access picker availability may still require Chromium/Brave setting support
+    - a browser profile could block file/folder input dialogs from automation or due to policy
     - stale dev server/cache could show old behavior until refresh
   causality_confidence: high
 
@@ -115,7 +115,7 @@ verification_state:
     - check: button smoke
       command_or_method: local browser automation at http://127.0.0.1:5173
       status: pass
-      evidence_ref: Run/Search/Create/Open repo/Back to project state changes, no console errors
+      evidence_ref: hidden folder fallback input present with expected attributes, no console errors
 
 verification_results:
   tests:
@@ -132,14 +132,14 @@ verification_results:
     summary: @pcc/windows Vite build passed
   manual_review:
     status: pass
-    notes: Browser smoke verified the main reported control path.
+    notes: Browser smoke verified fallback wiring without opening an OS file dialog.
 
 coverage_assessment:
   changed_behavior_covered: partial
   changed_files_covered: partial
   untested_risk_areas:
-    - real user File System Access picker confirmation cannot be automated here
-    - user's exact Brave profile/extensions/cache cannot be reproduced
+    - selecting a real folder in the user's Brave profile requires user interaction with the OS dialog
+    - fallback imports files read-only but cannot retain a rescan directory handle after reload
   false_green_risk: low
   residual_risk: low
 
@@ -167,20 +167,20 @@ repo_health:
 recommended_next_action:
   type: verify_only
   target: user browser at http://127.0.0.1:5173
-  instruction: Refresh the page hard if it still shows old behavior, then click Create, Run, Search, Open repo, and Back to project.
-  success_condition: Each click causes visible feedback or view transition.
-  verification: user confirms behavior in their browser
+  instruction: Hard refresh or restart dev server, click Import folder, select the project folder in the browser dialog, and confirm the project appears.
+  success_condition: Import folder opens a folder chooser and creates/imports the selected project.
+  verification: user confirms import succeeds in their browser
 
 fallback_action:
   type: narrower_check
-  instruction: If a specific button still fails, capture the exact button name and whether the browser console shows an error.
+  instruction: If folder dialog still does not open, try the repo launcher or a standard Chrome/Edge window and capture browser console errors.
 
 closure_readiness:
   can_claim_success: true
   terminal_state_candidate: succeeded
-  rationale: Code patch and automated/manual smoke verification passed.
+  rationale: Code patch, automated checks, and DOM fallback verification passed.
   remaining_unknowns:
-    - exact external browser profile behavior
+    - exact OS folder dialog behavior in the user's Brave profile
   follow_up_required:
     - hard refresh or restart dev server if stale client bundle remains loaded
-  final_user_summary: Buttons now respond with visible feedback or perform the expected transition; status_bundle.txt has been updated.
+  final_user_summary: Import folder now has a fallback folder chooser for browsers without showDirectoryPicker; status_bundle.txt has been updated.

@@ -155,6 +155,10 @@ p {
   min-height: 100vh;
 }
 
+.hidden-folder-input {
+  display: none;
+}
+
 .sidebar {
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border-soft);
