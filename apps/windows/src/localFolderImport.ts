@@ -3,6 +3,7 @@ import { buildLocalFolderImportDraft, type LocalFolderImportDraft } from "@pcc/p
 import type { Project } from "@pcc/schemas";
 
 export const WEB_DEMO_FALLBACK_LABEL = "Web demo fallback — limited, does not retain folder access";
+export const DESKTOP_MODE_LABEL = "Desktop mode active";
 
 export interface DesktopFolderScanResult {
   folderPath: string;
@@ -19,6 +20,7 @@ export interface DesktopFolderScanResult {
 
 export interface DesktopImportWindow {
   __PCC_DESKTOP__?: {
+    mode?: "desktop";
     pickAndScanFolder?: () => Promise<DesktopFolderScanResult | null | undefined>;
   };
   __TAURI__?: {
@@ -31,6 +33,10 @@ export type FolderImportMode = "desktop" | "web_demo";
 
 export function getFolderImportMode(target: DesktopImportWindow): FolderImportMode {
   return getDesktopPicker(target) ? "desktop" : "web_demo";
+}
+
+export function getFolderImportModeLabel(target: DesktopImportWindow): string {
+  return getFolderImportMode(target) === "desktop" ? DESKTOP_MODE_LABEL : WEB_DEMO_FALLBACK_LABEL;
 }
 
 export async function pickDesktopFolder(target: DesktopImportWindow): Promise<DesktopFolderScanResult | undefined> {

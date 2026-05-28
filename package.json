@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "corepack pnpm --filter @pcc/windows dev",
     "build": "corepack pnpm --filter @pcc/windows build",
+    "desktop:pack": "corepack pnpm --filter @pcc/windows desktop:pack",
+    "desktop:smoke": "corepack pnpm --filter @pcc/windows desktop:smoke",
     "lint": "corepack pnpm --filter @pcc/schemas --filter @pcc/local-fs --filter @pcc/repo-analyzer --filter @pcc/project-import --filter @pcc/domain --filter @pcc/assistant --filter @pcc/windows lint",
     "typecheck": "corepack pnpm --filter @pcc/schemas --filter @pcc/local-fs --filter @pcc/repo-analyzer --filter @pcc/project-import --filter @pcc/domain --filter @pcc/assistant --filter @pcc/windows typecheck",
     "test": "vitest run packages/schemas/src/index.test.ts packages/local-fs/src/index.test.ts packages/repo-analyzer/src/index.test.ts packages/project-import/src/index.test.ts packages/domain/src/index.test.ts packages/assistant/src/index.test.ts apps/windows/src/importOverview.test.ts apps/windows/src/localFolderImport.test.ts",

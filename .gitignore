@@ -1,6 +1,7 @@
 node_modules
 .turbo
 dist
+dist-desktop
 build
 .env
 .env.*

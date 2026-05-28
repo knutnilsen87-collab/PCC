@@ -1,14 +1,14 @@
 # status_bundle.txt
 
-status_bundle_version: 3
-last_updated: 2026-05-28T09:09:38+02:00
+status_bundle_version: 4
+last_updated: 2026-05-28T14:44:28+02:00
 updated_by: codex
 project_name: Project Command Center
-run_id: pcc-desktop-first-folder-import-2026-05-28
-task_id: desktop-first-local-folder-import-and-folder-name-default
+run_id: pcc-packaged-desktop-runtime-2026-05-28
+task_id: implement-real-windows-desktop-runtime-native-folder-import
 branch: main
-commit_before: baabfc9432a28cb7954e8129f0b09a83d11a19d7
-commit_current: b2d65da04265563f79b67e003c94361059a3d4b8
+commit_before: 5e2f2aa685d5b8e5de2ff3a112b7f41d890ac20c
+commit_current: pending
 
 ============================================================
 1. CURRENT STATE
@@ -16,89 +16,101 @@ commit_current: b2d65da04265563f79b67e003c94361059a3d4b8
 
 lifecycle_state:
   value: ready_to_ship
-  explanation: Local folder import has been refactored to prefer a native desktop adapter. Browser folder input is now explicitly a web demo fallback, not the primary product path.
+  explanation: PCC now has a packaged Electron Windows desktop runtime. The launcher starts the packaged .exe instead of opening localhost in a browser.
 
 status:
   value: pass
-  user_visible_summary: Import folder now targets the desktop-native picker first, creates a project named after the selected folder, and shows a simple overview focused on project name, progress, status, next step, and one primary action.
-  technical_summary: Added a FolderPickerAdapter-style desktop import helper, folder-basename naming with duplicate suffixes, safe ProjectAnalysisSnapshot import drafting, demo fallback labeling, and focused tests.
+  user_visible_summary: Project Command Center can be launched from a Windows executable. In packaged desktop mode, Import folder uses a native Windows folder picker and the web folder input is not rendered.
+  technical_summary: Added Electron main/preload runtime, window.__PCC_DESKTOP__.pickAndScanFolder bridge, native pcc_pick_and_scan_folder IPC command, read-only local scanner, packaged desktop build script, packaged smoke test, and runtime mode indicators.
+
+desktop_runtime:
+  executable: apps/windows/dist-desktop/win-unpacked/Project Command Center.exe
+  launcher: START_PROJECT_COMMAND_CENTER.cmd -> start-project-command-center.ps1 -> packaged executable
+  renderer_url: file:// packaged dist/index.html
+  localhost_required: false
+  browser_tab_required: false
+  desktop_mode_indicator: Desktop mode active
+  web_demo_mode_indicator: Web demo fallback — limited, does not retain folder access
+  browser_folder_input_in_desktop_mode: not rendered
 
 progress_tracking:
-  phase: desktop-first-import
+  phase: packaged-desktop-runtime
   percent: 100
   blocker: none
-  last_completed_step: typecheck, tests, and build passed after code patch
-  current_step: pushed to GitHub
-  next_step: add the native desktop shell bridge if the production package does not already expose it
+  last_completed_step: packaged desktop smoke passed
+  current_step: commit and push pending
+  next_step: commit and push desktop runtime implementation
 
 ============================================================
 2. TASK AND SCOPE
 ============================================================
 
 task:
-  user_request: Make Project Command Center desktop-first for local folder import, avoid browser upload prompts in production desktop mode, keep technical scan details hidden by default, and derive imported project names from the selected folder basename.
-  desired_outcome: Selecting a folder through the desktop app creates/imports a project named after that folder, shows it in the sidebar/header, scans locally read-only, and presents a calm human-readable overview.
+  user_request: PCC must be a real desktop-first Windows application launched from an .exe. Folder import must use a native OS picker and never trigger browser upload permission text in production desktop mode.
+  desired_outcome: Open PCC from a Windows .exe, no browser tab, no 127.0.0.1, native folder picker, read-only local scan, project name from selected folder basename.
   non_goals:
-    - no domain logic rewrite
-    - no schema migration
-    - no dependency additions
-    - no broad UI redesign outside imported project overview
+    - no cloud sync
+    - no silent AI filesystem access
+    - no destructive shell/file actions from the UI
+    - no installer signing
   constraints:
-    - preserve approval-based AI mutation behavior
-    - keep assistant away from raw unrestricted filesystem access
-    - keep scan pipeline read-only and safe
-    - browser fallback can remain only as a clearly labeled local demo path
+    - assistant must not receive raw unrestricted filesystem access
+    - browser fallback only in explicit web demo mode
+    - packaged desktop smoke must pass before ready_to_ship
 
 scope_lock:
   in_scope:
+    - apps/windows/desktop/main.cjs
+    - apps/windows/desktop/preload.cjs
+    - apps/windows/desktop/smoke.cjs
+    - apps/windows/package.json
+    - apps/windows/vite.config.ts
     - apps/windows/src/App.tsx
-    - apps/windows/src/importOverview.ts
     - apps/windows/src/localFolderImport.ts
     - apps/windows/src/localFolderImport.test.ts
-    - apps/windows/src/importOverview.test.ts
     - apps/windows/src/styles.css
     - package.json
+    - pnpm-lock.yaml
+    - Start_Project_Command_Center.cmd
     - status_bundle.txt
   out_of_scope:
-    - packages/domain public contracts
-    - packages/schemas public contracts
-    - packages/project-import public contract changes
-    - new dependencies
+    - signed installer
+    - Tauri runtime
+    - external API integration
   allowed_change_types:
-    - focused UI patch
-    - adapter helper
-    - focused tests
+    - desktop runtime bridge
+    - packaged build config
+    - smoke test
+    - focused renderer guard
     - status update
   forbidden_change_types:
-    - broad refactor
-    - unrelated redesign
+    - browser upload prompt in desktop production
     - raw filesystem exposure to assistant
-    - browser upload prompt as production path
-  scope_change_required: false
+    - localhost browser launch as primary product path
 
 ============================================================
 3. FACTS AND CAUSAL BRIDGE
 ============================================================
 
 facts:
-  - User observed browser upload warning language when using folder import.
-  - Intended product direction is desktop-first, not website-style upload.
-  - The existing scanner already accepts safe ScannableEntry records and produces ProjectAnalysisSnapshot data through the existing import pipeline.
-  - Imported project display names previously could be influenced by detected package/framework names.
+  - Previous implementation only prepared a renderer adapter and still relied on a Vite browser tab for launch.
+  - Browser folder input can trigger "Vil du laste opp X filer til dette nettstedet?" and is unacceptable for PCC production desktop.
+  - Electron provides a Windows .exe runtime and native folder picker via dialog.showOpenDialog.
+  - The renderer already consumes safe ScannableEntry records and creates ProjectAnalysisSnapshot through the existing import pipeline.
 
 causal_bridge:
-  problem_observed: Import folder felt like a browser upload flow and could name/show projects using technical detection instead of the selected folder name.
-  hypothesized_cause: The UI preferred browser folder APIs and did not separate native folder selection from safe folder analysis in the app layer.
-  change_made: Added a desktop picker adapter path, demoted the browser input to a labeled web demo fallback, derived display names from selected folder basenames, and simplified the imported project overview.
-  expected_effect: Desktop production can inject/use the native picker path without triggering browser upload prompts; imported projects appear under the selected folder name and default to a plain-language next-action screen.
+  problem_observed: PCC still behaved like a website at 127.0.0.1 and could show browser upload warnings.
+  hypothesized_cause: No packaged desktop runtime layer existed; only the web/Vite renderer path was active.
+  change_made: Added Electron main/preload, packaged .exe build, native folder picker IPC, read-only scanner in main process, desktop runtime detection, and removed browser folder input from desktop mode.
+  expected_effect: Packaged PCC opens as an .exe, loads local file:// renderer, shows Desktop mode active, opens native Windows folder picker, scans selected folder locally, and creates a project named from folder basename.
   evidence_that_effect_happened:
     - corepack pnpm typecheck: pass
     - corepack pnpm test: pass, 39 tests
     - corepack pnpm build: pass
-  alternate_hypotheses:
-    - a desktop shell still needs to provide the pcc_pick_and_scan_folder command or __PCC_DESKTOP__.pickAndScanFolder bridge
-    - stale browser/dev server cache can show previous fallback text until refresh
-  causality_confidence: medium_high
+    - corepack pnpm desktop:pack: pass, exe generated
+    - corepack pnpm desktop:smoke: pass, packaged exe launched, desktop mode active, no browser input, no localhost URL, native folder picker observed, smoke import created project using folder basename
+    - corepack pnpm lint: pass
+  causality_confidence: high
 
 ============================================================
 4. VERIFICATION STATE
@@ -110,45 +122,43 @@ verification_state:
     - check: typecheck
       command_or_method: corepack pnpm typecheck
       status: pass
-      evidence_ref: terminal output, apps/windows typecheck Done
     - check: tests
       command_or_method: corepack pnpm test
       status: pass
-      evidence_ref: terminal output, 8 files passed, 39 tests passed
-    - check: build
+      evidence_ref: 8 files passed, 39 tests passed
+    - check: renderer build
       command_or_method: corepack pnpm build
       status: pass
-      evidence_ref: terminal output, Vite build completed
-    - check: diff review
-      command_or_method: git diff
+    - check: packaged desktop build
+      command_or_method: corepack pnpm desktop:pack
       status: pass
-      evidence_ref: local diff reviewed before commit
+      evidence_ref: apps/windows/dist-desktop/win-unpacked/Project Command Center.exe
+    - check: packaged desktop smoke
+      command_or_method: corepack pnpm desktop:smoke
+      status: pass
+      evidence_ref: "Packaged desktop smoke passed."
+    - check: lint
+      command_or_method: corepack pnpm lint
+      status: pass
 
-verification_results:
-  tests:
-    command: corepack pnpm test
-    status: pass
-    summary: 39 tests passed
-  typecheck:
-    command: corepack pnpm typecheck
-    status: pass
-    summary: all targeted workspace packages passed
-  build:
-    command: corepack pnpm build
-    status: pass
-    summary: @pcc/windows Vite build passed
-  manual_review:
-    status: pass
-    notes: Diff reviewed; desktop runtime bridge remains an external integration point if not present in packaging.
+packaged_smoke_assertions:
+  launched_exe: pass
+  no_browser_tab_required: pass
+  no_localhost_renderer_url: pass
+  desktop_mode_active_visible: pass
+  browser_file_input_hidden_in_desktop: pass
+  native_folder_picker_opens_after_import_click: pass
+  no_browser_upload_language: pass
+  project_created_from_folder_basename: pass
+  project_visible_in_header: pass
 
 coverage_assessment:
-  changed_behavior_covered: partial
-  changed_files_covered: good
-  untested_risk_areas:
-    - actual native desktop shell command implementation is provided outside the current Vite-only app tree
-    - real OS folder picker interaction requires the desktop runtime
-  false_green_risk: medium
+  changed_behavior_covered: high
+  changed_files_covered: high
   residual_risk: medium
+  residual_risk_notes:
+    - executable is packaged as an unpacked local Windows app, not a signed installer
+    - smoke test uses a controlled smoke folder for automated import after separately verifying native picker opening
 
 ============================================================
 5. REPO HEALTH
@@ -158,36 +168,35 @@ repo_health:
   status: preserved
   structure_fit: good
   ownership_fit: good
-  boundary_impact: low
-  duplication_risk: low
-  dependency_sprawl_risk: none
-  naming_consistency: improved
+  boundary_impact: medium
+  dependency_sprawl_risk: accepted_for_desktop_runtime
   temporary_mess_introduced:
     value: false
     cleanup_path: n/a
-  verdict: clean_success_allowed
+  verdict: desktop_runtime_success
 
 ============================================================
 6. NEXT ACTION CONTRACT
 ============================================================
 
 recommended_next_action:
-  type: desktop_runtime_verify
-  target: main branch
-  instruction: Verify the production desktop shell exposes pcc_pick_and_scan_folder or __PCC_DESKTOP__.pickAndScanFolder.
-  success_condition: Clicking Import folder in the packaged desktop app opens the native OS folder picker and imports without browser upload language.
-  verification: packaged desktop smoke
+  type: user_verify_packaged_exe
+  target: apps/windows/dist-desktop/win-unpacked/Project Command Center.exe
+  instruction: Launch PCC from START_PROJECT_COMMAND_CENTER.cmd or directly from the packaged .exe, click Import folder, and select a project folder in the native Windows picker.
+  success_condition: No browser opens, no 127.0.0.1 is visible, no browser upload warning appears, and the imported project uses the folder basename.
+  verification: user visual confirmation on their machine session
 
 fallback_action:
-  type: desktop_bridge_followup
-  instruction: If the production desktop runtime lacks pcc_pick_and_scan_folder or __PCC_DESKTOP__.pickAndScanFolder, add that native bridge in the shell layer next.
+  type: package_installer
+  instruction: Add signed/installer packaging later if required. Current DoD executable is the unpacked packaged Windows .exe.
 
 closure_readiness:
   can_claim_success: true
   terminal_state_candidate: succeeded_after_push
-  rationale: Typecheck, tests, build, and diff review passed.
+  rationale: Packaged desktop runtime and packaged smoke test passed.
   remaining_unknowns:
-    - actual native shell bridge availability in the production desktop packaging layer
+    - whether user wants an installer shortcut in addition to the generated .exe
   follow_up_required:
-    - packaged desktop smoke
-  final_user_summary: Desktop-first import path is implemented in the UI/app layer; browser fallback is demo-labeled; selected folder basename becomes the project name.
+    - commit
+    - push
+  final_user_summary: PCC now has a packaged Windows desktop .exe with native folder picker import and no browser upload fallback in desktop mode.

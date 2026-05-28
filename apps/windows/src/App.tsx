@@ -36,9 +36,11 @@ import { DEFAULT_SCAN_POLICY, scanVirtualEntries, shouldSkipPath, type Scannable
 import { buildLocalFolderImportDraft } from "@pcc/project-import";
 import type { AttachmentCategory, Project, ProjectAnalysisSnapshot } from "@pcc/schemas";
 import {
+  DESKTOP_MODE_LABEL,
   WEB_DEMO_FALLBACK_LABEL,
   buildFolderNamedImportDraft,
   getFolderImportMode,
+  getFolderImportModeLabel,
   pickDesktopFolder,
   type DesktopImportWindow,
 } from "./localFolderImport";
@@ -84,7 +86,9 @@ export function App() {
   const [importState, setImportState] = useState<ImportState>({ status: "idle" });
   const assistantInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const folderImportMode = getFolderImportMode(window as unknown as DesktopImportWindow);
+  const desktopWindow = window as unknown as DesktopImportWindow;
+  const folderImportMode = getFolderImportMode(desktopWindow);
+  const folderImportModeLabel = getFolderImportModeLabel(desktopWindow);
 
   const activeProject = state.projects.find((project) => project.id === activeProjectId) ?? state.projects[0];
   const activeDisplayName = activeProject ? getProjectDisplayName(activeProject, getLatestAnalysisSnapshot(state, activeProject.id)) : undefined;
@@ -159,6 +163,10 @@ export function App() {
       const message = `${WEB_DEMO_FALLBACK_LABEL}. Use this only for local development or demo import.`;
       setImportState({ status: "picking_folder", message });
       setAssistantOutput(`${message} The production desktop app uses a native folder picker and does not trigger browser upload prompts.`);
+      if (!folderInputRef.current) {
+        setImportState({ status: "failed", message: "Web demo folder input is not available in this runtime." });
+        return;
+      }
       folderInputRef.current?.click();
     } catch (error) {
       const message = error instanceof DOMException && error.name === "AbortError" ? "Folder import cancelled." : error instanceof Error ? error.message : "Folder import failed.";
@@ -351,16 +359,18 @@ export function App() {
 
   return (
     <main className="app-shell" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>
-      <input
-        ref={folderInputRef}
-        type="file"
-        multiple
-        aria-hidden="true"
-        tabIndex={-1}
-        className="hidden-folder-input"
-        onChange={handleFolderInputChange}
-        {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
-      />
+      {folderImportMode === "web_demo" && (
+        <input
+          ref={folderInputRef}
+          type="file"
+          multiple
+          aria-hidden="true"
+          tabIndex={-1}
+          className="hidden-folder-input"
+          onChange={handleFolderInputChange}
+          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+        />
+      )}
       <aside className="sidebar">
         <div className="brand">
           <CircleDot aria-hidden="true" />
@@ -371,10 +381,14 @@ export function App() {
         </div>
 
         <section className="create-project">
+          <p className={folderImportMode === "desktop" ? "runtime-mode desktop" : "runtime-mode web-demo"}>
+            {folderImportModeLabel}
+          </p>
           <button type="button" className="primary" onClick={handleImportFolder} aria-label="Import local project folder">
             <FolderPlus size={16} /> Import folder
           </button>
-          {folderImportMode === "web_demo" && <p className="web-demo-fallback-note">{WEB_DEMO_FALLBACK_LABEL}</p>}
+          {folderImportMode === "web_demo" && <p className="web-demo-fallback-note">Web demo mode active. Browser folder selection is limited and not used in packaged desktop production.</p>}
+          {folderImportMode === "desktop" && <p className="desktop-mode-note">{DESKTOP_MODE_LABEL}. Import uses the native Windows folder picker.</p>}
           <label>
             <span>Create empty project</span>
             <input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Project name" />

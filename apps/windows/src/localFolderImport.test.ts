@@ -3,10 +3,12 @@ import { createInitialState, importLocalFolderProject } from "@pcc/domain";
 import { scanVirtualEntries } from "@pcc/local-fs";
 import type { Project } from "@pcc/schemas";
 import {
+  DESKTOP_MODE_LABEL,
   WEB_DEMO_FALLBACK_LABEL,
   buildFolderNamedImportDraft,
   deriveProjectNameFromFolderPath,
   getFolderImportMode,
+  getFolderImportModeLabel,
   makeUniqueProjectName,
   pickDesktopFolder,
 } from "./localFolderImport";
@@ -41,11 +43,13 @@ describe("desktop local folder import", () => {
     };
 
     expect(getFolderImportMode(target)).toBe("desktop");
+    expect(getFolderImportModeLabel(target)).toBe(DESKTOP_MODE_LABEL);
     await expect(pickDesktopFolder(target)).resolves.toEqual(selected);
   });
 
   it("keeps the browser fallback out of the primary desktop path", () => {
     expect(getFolderImportMode({})).toBe("web_demo");
+    expect(getFolderImportModeLabel({})).toBe(WEB_DEMO_FALLBACK_LABEL);
     expect(WEB_DEMO_FALLBACK_LABEL).toBe("Web demo fallback — limited, does not retain folder access");
   });
 
