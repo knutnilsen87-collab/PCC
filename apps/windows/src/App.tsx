@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
-  Check,
   CircleDot,
-  FileDown,
   FolderOpen,
   FolderPlus,
   MessageSquareText,
@@ -12,8 +10,6 @@ import {
   Search,
   ShieldCheck,
   SquarePen,
-  Upload,
-  X,
 } from "lucide-react";
 import { runAssistantCommand } from "@pcc/assistant";
 import {
@@ -59,6 +55,9 @@ import {
   getTodaySummary,
   type TodayProjectRow,
 } from "./importOverview";
+import { ProjectProfilePage } from "./features/pcc/project-profile/ProjectProfilePage";
+import { mockProjectProfile } from "./features/pcc/project-profile/pccProjectProfile.mock";
+import type { ProjectProfile, RiskLevel } from "./features/pcc/project-profile/pccProjectProfile.types";
 
 const storageKey = "pcc.local.state.v1";
 
@@ -73,7 +72,7 @@ type ViewMode = "today" | "project" | "repo";
 export function App() {
   const [state, setState] = usePersistentState();
   const [activeProjectId, setActiveProjectId] = useState<string | undefined>(state.projects[0]?.id);
-  const [viewMode, setViewMode] = useState<ViewMode>("today");
+  const [viewMode, setViewMode] = useState<ViewMode>("project");
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
   const [sessionSummary, setSessionSummary] = useState("");
@@ -95,6 +94,7 @@ export function App() {
   const timeline = activeProject ? projectTimeline(state, activeProject.id) : [];
   const attachments = activeProject ? state.attachments.filter((attachment) => attachment.projectId === activeProject.id) : [];
   const approvals = state.approvals.filter((approval) => approval.status === "pending");
+  const showProjectProfileCommandBar = Boolean(activeProject && viewMode === "project" && !(analysis && activeProject.origin === "local_folder_import"));
 
   useEffect(() => {
     if (!activeProjectId && state.projects[0]) setActiveProjectId(state.projects[0].id);
@@ -505,28 +505,16 @@ export function App() {
             onRescan={handleRescanActiveProject}
             onCreateResumeFromAnalysis={handleCreateResumeFromAnalysis}
             onAssistantQuickAction={handleAssistantQuickAction}
+            onProfileCommand={(command) => setAssistantOutput(`Project command noted: ${command}. V1 profile commands are non-destructive and approval-gated before execution.`)}
             onApprove={(approvalId) => setState(applyApproval(state, approvalId))}
             onReject={(approvalId) => setState(rejectApproval(state, approvalId))}
           />
         ) : (
-          <section className="empty-state">
-            <FolderOpen size={32} />
-            <h2>No project selected</h2>
-            <p>Start by importing a local project folder. Project Command Center will scan it read-only, detect key files, summarize status, and create a project memory surface.</p>
-            <div className="empty-actions">
-              <button type="button" className="primary" onClick={handleImportFolder}>
-                <FolderPlus size={16} /> Import folder
-              </button>
-              <button type="button" onClick={handleCreateEmptyProject}>
-                <Plus size={16} /> Create empty project
-              </button>
-            </div>
-            <ImportProgress state={importState} />
-          </section>
+          <ProjectProfilePage state="empty" onCreateProject={handleCreateEmptyProject} />
         )}
       </section>
 
-      <footer className="assistant-bar">
+      {!showProjectProfileCommandBar && <footer className="assistant-bar">
         <div className="assistant-status">
           <MessageSquareText size={18} />
           <span>{assistantOutput}</span>
@@ -561,7 +549,7 @@ export function App() {
             <SquarePen size={16} /> Run
           </button>
         </div>
-      </footer>
+      </footer>}
     </main>
   );
 }
@@ -589,6 +577,7 @@ interface ProjectSurfaceProps {
   onRescan: () => void;
   onCreateResumeFromAnalysis: () => void;
   onAssistantQuickAction: (action: string) => void;
+  onProfileCommand: (command: string) => void;
   onApprove: (approvalId: string) => void;
   onReject: (approvalId: string) => void;
 }
@@ -830,171 +819,184 @@ function ProjectSurface(props: ProjectSurfaceProps) {
   }
 
   return (
-    <div className="project-surface">
-      <section className="hero-panel">
-        <div>
-          <span className="eyebrow">Project truth</span>
-          <h2>{props.project.currentFocus ?? "Define current focus"}</h2>
-          <p>{props.project.description ?? "No description yet. Capture the work context before the next session ends."}</p>
-        </div>
-        <div className="progress-block">
-          <span>{props.project.progress}%</span>
-          <div aria-label="Project progress" className="progress-track">
-            <div style={{ width: `${props.project.progress}%` }} />
-          </div>
-        </div>
-      </section>
-
-      <ImportProgress state={props.importState} />
-
-      {props.analysis && <AnalysisPanel analysis={props.analysis} onRescan={props.onRescan} />}
-
-      <section className="grid">
-        <article className="panel primary-panel">
-          <div className="panel-title">
-            <ShieldCheck size={17} />
-            <h3>Resume</h3>
-          </div>
-          {props.resume ? (
-            <>
-              <p className="quiet-label">You stopped here</p>
-              <p>{props.resume.youStoppedHere}</p>
-              <p className="quiet-label">Next exact step</p>
-              <p className="next-step">{props.resume.nextExactStep}</p>
-            </>
-          ) : (
-            <p className="empty-copy">End a session or ask the assistant to draft a resume snapshot.</p>
-          )}
-        </article>
-
-        <article className="panel">
-          <div className="panel-title">
-            <SquarePen size={17} />
-            <h3>End session</h3>
-          </div>
-          <textarea
-            value={props.sessionSummary}
-            onChange={(event) => props.onSessionSummaryChange(event.target.value)}
-            placeholder="What changed in this session?"
-            rows={4}
-          />
-          <input
-            value={props.sessionNextStep}
-            onChange={(event) => props.onSessionNextStepChange(event.target.value)}
-            placeholder="Next exact step"
-          />
-          <button type="button" className="primary" onClick={props.onEndSession}>
-            <Check size={16} /> Save session
-          </button>
-        </article>
-
-        <article className="panel">
-          <div className="panel-title">
-            <X size={17} />
-            <h3>Blockers</h3>
-          </div>
-          <div className="inline-action">
-            <input
-              value={props.blockerTitle}
-              onChange={(event) => props.onBlockerTitleChange(event.target.value)}
-              placeholder="New blocker"
-            />
-            <button type="button" onClick={props.onCreateBlocker} title="Create blocker">
-              <Plus size={16} />
-            </button>
-          </div>
-          {props.blockers.length ? (
-            <ul className="compact-list">
-              {props.blockers.map((blocker) => (
-                <li key={blocker.id}>
-                  <strong>{blocker.title}</strong>
-                  <span>{blocker.severity}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="empty-copy">No open blockers.</p>
-          )}
-        </article>
-
-        <article className="panel">
-          <div className="panel-title">
-            <Upload size={17} />
-            <h3>Files</h3>
-          </div>
-          <select value={props.fileCategory} onChange={(event) => props.onFileCategoryChange(event.target.value as AttachmentCategory)}>
-            <option value="docs">Docs</option>
-            <option value="assets">Assets</option>
-            <option value="prompts">Prompts</option>
-            <option value="screenshots">Screenshots</option>
-            <option value="source">Source</option>
-            <option value="other">Other</option>
-          </select>
-          <p className="drop-copy">Drop files anywhere in the app to import them into the active project.</p>
-          {props.attachments.length ? (
-            <ul className="compact-list">
-              {props.attachments.map((attachment) => (
-                <li key={attachment.id}>
-                  <strong>{attachment.originalName}</strong>
-                  <span>{attachment.category}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="empty-copy">No files imported yet.</p>
-          )}
-        </article>
-
-        <article className="panel">
-          <div className="panel-title">
-            <ShieldCheck size={17} />
-            <h3>Approvals</h3>
-          </div>
-          {props.approvals.length ? (
-            <ul className="approval-list">
-              {props.approvals.map((approval) => (
-                <li key={approval.id}>
-                  <div>
-                    <strong>{approval.title}</strong>
-                    <span>{approval.summary}</span>
-                  </div>
-                  <div className="button-pair">
-                    <button type="button" onClick={() => props.onApprove(approval.id)} title="Approve">
-                      <Check size={16} />
-                    </button>
-                    <button type="button" onClick={() => props.onReject(approval.id)} title="Reject">
-                      <X size={16} />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="empty-copy">No pending approvals.</p>
-          )}
-        </article>
-
-        <article className="panel">
-          <div className="panel-title">
-            <FileDown size={17} />
-            <h3>Timeline</h3>
-          </div>
-          {props.timeline.length ? (
-            <ul className="timeline-list">
-              {props.timeline.map((event) => (
-                <li key={event.id}>
-                  <span>{event.eventType}</span>
-                  <strong>{event.title}</strong>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="empty-copy">No project events yet.</p>
-          )}
-        </article>
-      </section>
-    </div>
+    <ProjectProfilePage
+      profile={buildProjectProfileFromProject(props)}
+      onContinue={() => {
+        const currentFocus = document.getElementById("pcc-current-focus");
+        currentFocus?.scrollIntoView({ behavior: "smooth", block: "center" });
+        currentFocus?.focus({ preventScroll: true });
+      }}
+      onCommand={props.onProfileCommand}
+    />
   );
+}
+
+function buildProjectProfileFromProject(props: ProjectSurfaceProps): ProjectProfile {
+  const displayName = getProjectDisplayName(props.project, props.analysis);
+  const nextAction =
+    props.resume?.nextExactStep ??
+    props.project.nextExactStep ??
+    props.analysis?.recommendedNextStep ??
+    "Define the next exact project action.";
+  const mappedBlockers = props.blockers.map((blocker) => ({
+    id: blocker.id,
+    title: blocker.title,
+    severity: mapRiskLevel(blocker.severity),
+    recommendedAction: blocker.nextAction ?? "Decide the owner and unblock the next action.",
+  }));
+  const artifacts = props.attachments.length
+    ? props.attachments.map((attachment) => ({
+        id: attachment.id,
+        label: attachment.title || attachment.originalName,
+        type: mapArtifactType(attachment.category),
+        href: attachment.url,
+        updatedAt: formatRelativeDate(attachment.updatedAt ?? attachment.indexedAt ?? attachment.createdAt),
+      }))
+    : mockProjectProfile.artifacts;
+  const recentActivity = props.timeline.length
+    ? props.timeline.slice(0, 8).map((event) => ({
+        id: event.id,
+        date: formatRelativeDate(event.createdAt),
+        event: event.title,
+        type: mapActivityType(event.eventType),
+      }))
+    : mockProjectProfile.recentActivity;
+
+  return {
+    ...mockProjectProfile,
+    id: props.project.id,
+    name: displayName,
+    oneLiner: props.project.description ?? props.analysis?.summary.shortSummary ?? mockProjectProfile.oneLiner,
+    category: mapProfileCategory(props.project.category, props.analysis),
+    status: mapProfileStatus(props.project.status, props.analysis),
+    healthScore: calculateProfileHealth(props.project, props.blockers.length, props.resume ? true : false),
+    progressPercent: props.project.progress,
+    momentum: props.project.status === "paused" || props.project.status === "archived" ? "paused" : props.blockers.length ? "stalled" : props.resume ? "active" : "slow",
+    qaStatus: props.analysis?.status === "failed" ? "fail" : props.analysis ? "needs_review" : "not_checked",
+    lastActiveAt: formatRelativeDate(props.project.lastActivityAt ?? props.project.updatedAt),
+    currentGoal: props.project.currentFocus ?? props.resume?.currentFocus ?? props.analysis?.summary.statusSummary ?? "No current goal defined yet.",
+    whyItMatters: props.resume?.youStoppedHere ?? props.analysis?.assistantContextSummary ?? "A clear profile keeps the next session focused and reduces restart cost.",
+    nextAction,
+    nextMilestone: props.project.currentPhase ?? props.analysis?.recommendedNextStep ?? mockProjectProfile.nextMilestone,
+    blockers: mappedBlockers,
+    workstreams: buildProfileWorkstreams(props.project.progress, props.project.status, nextAction),
+    decisions: mockProjectProfile.decisions,
+    risks: props.analysis?.risks.length
+      ? props.analysis.risks
+          .filter((risk) => risk.severity !== "info")
+          .map((risk) => ({
+            id: risk.id,
+            title: risk.title,
+            level: mapRiskLevel(risk.severity),
+            mitigation: risk.explanation,
+          }))
+      : [],
+    artifacts,
+    recentActivity,
+    milestones: buildMilestones(props.project.progress, props.project.status === "blocked"),
+  };
+}
+
+function buildProfileWorkstreams(progress: number, status: Project["status"], nextAction: string): ProjectProfile["workstreams"] {
+  return [
+    {
+      ...mockProjectProfile.workstreams[0],
+      progressPercent: Math.max(18, Math.min(92, progress + 18)),
+      nextStep: "Clarify the profile, goal and priority for the next session.",
+    },
+    {
+      ...mockProjectProfile.workstreams[1],
+      progressPercent: Math.max(12, Math.min(88, progress + 8)),
+      nextStep: "Keep the project surface readable and action-oriented.",
+    },
+    {
+      ...mockProjectProfile.workstreams[2],
+      status: status === "blocked" ? "blocked" : "active",
+      progressPercent: Math.max(8, progress),
+      nextStep: nextAction,
+    },
+    {
+      ...mockProjectProfile.workstreams[3],
+      status: status === "blocked" ? "blocked" : "active",
+      progressPercent: Math.max(10, Math.min(70, progress - 6)),
+      nextStep: "Check approval gates before any risky mutation.",
+    },
+    {
+      ...mockProjectProfile.workstreams[4],
+      status: progress >= 80 ? "active" : "not_started",
+      progressPercent: Math.max(6, Math.min(70, progress - 20)),
+      nextStep: "Run the smallest relevant verification pass.",
+    },
+  ];
+}
+
+function buildMilestones(progress: number, isBlocked: boolean): ProjectProfile["milestones"] {
+  const milestones = mockProjectProfile.milestones;
+  const currentIndex = Math.min(milestones.length - 1, Math.max(0, Math.floor(progress / 20)));
+  return milestones.map((milestone, index) => ({
+    ...milestone,
+    status: isBlocked && index === currentIndex ? "blocked" : index < currentIndex ? "done" : index === currentIndex ? "current" : "upcoming",
+  }));
+}
+
+function mapProfileStatus(status: Project["status"], analysis?: ProjectAnalysisSnapshot): ProjectProfile["status"] {
+  if (status === "idea") return "idea";
+  if (status === "paused" || status === "archived") return "paused";
+  if (status === "completed") return "launched";
+  if (status === "blocked") return "testing";
+  if (analysis?.status === "complete") return "testing";
+  return "building";
+}
+
+function mapProfileCategory(category?: string, analysis?: ProjectAnalysisSnapshot): ProjectProfile["category"] {
+  const normalized = category?.toLowerCase();
+  if (normalized === "game" || normalized === "brand" || normalized === "client" || normalized === "research" || normalized === "system" || normalized === "app") {
+    return normalized;
+  }
+  if (analysis?.summary.likelyProjectType === "desktop_app" || analysis?.summary.likelyProjectType === "web_app") return "app";
+  return "system";
+}
+
+function mapRiskLevel(value: string): RiskLevel {
+  if (value === "critical" || value === "high") return "high";
+  if (value === "warning" || value === "medium") return "medium";
+  return "low";
+}
+
+function mapArtifactType(category: AttachmentCategory): ProjectProfile["artifacts"][number]["type"] {
+  if (category === "docs") return "spec";
+  if (category === "prompts") return "prompt";
+  if (category === "screenshots") return "design";
+  if (category === "source") return "repo";
+  return "file";
+}
+
+function mapActivityType(eventType: string): ProjectProfile["recentActivity"][number]["type"] {
+  if (eventType.includes("decision")) return "decision";
+  if (eventType.includes("qa")) return "qa";
+  if (eventType.includes("patch")) return "patch";
+  if (eventType.includes("task")) return "task";
+  return "note";
+}
+
+function calculateProfileHealth(project: Project, blockerCount: number, hasResume: boolean): number {
+  const blockerPenalty = Math.min(38, blockerCount * 18);
+  const resumeBonus = hasResume ? 10 : 0;
+  const priorityPenalty = project.priority === "critical" ? 8 : 0;
+  return Math.max(22, Math.min(96, 64 + Math.round(project.progress / 4) + resumeBonus - blockerPenalty - priorityPenalty));
+}
+
+function formatRelativeDate(value?: string): string {
+  if (!value) return "Not recorded";
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return value;
+  const now = new Date();
+  const date = new Date(timestamp);
+  if (date.toDateString() === now.toDateString()) return "Today";
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function ImportedProjectOverview({
