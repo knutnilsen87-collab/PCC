@@ -1,14 +1,14 @@
 # status_bundle.txt
 
-status_bundle_version: 4
-last_updated: 2026-05-28T14:46:53+02:00
+status_bundle_version: 5
+last_updated: 2026-05-28T14:50:14+02:00
 updated_by: codex
 project_name: Project Command Center
 run_id: pcc-packaged-desktop-runtime-2026-05-28
 task_id: implement-real-windows-desktop-runtime-native-folder-import
 branch: main
 commit_before: 5e2f2aa685d5b8e5de2ff3a112b7f41d890ac20c
-commit_current: e903645a960e3258f2ce484fd9c36f707839e850
+commit_current: 8f24602b
 
 ============================================================
 1. CURRENT STATE
@@ -25,7 +25,7 @@ status:
 
 desktop_runtime:
   executable: apps/windows/dist-desktop/win-unpacked/Project Command Center.exe
-  launcher: START_PROJECT_COMMAND_CENTER.cmd -> start-project-command-center.ps1 -> packaged executable
+  launcher: Start_Project_Command_Center.cmd -> start-project-command-center.ps1 -> packaged executable
   renderer_url: file:// packaged dist/index.html
   localhost_required: false
   browser_tab_required: false
@@ -38,8 +38,8 @@ progress_tracking:
   percent: 100
   blocker: none
   last_completed_step: packaged desktop smoke passed
-  current_step: desktop runtime committed locally
-  next_step: push desktop runtime implementation
+  current_step: repo launcher updated to start packaged executable only
+  next_step: push launcher update
 
 ============================================================
 2. TASK AND SCOPE
@@ -72,6 +72,7 @@ scope_lock:
     - package.json
     - pnpm-lock.yaml
     - Start_Project_Command_Center.cmd
+    - start-project-command-center.ps1
     - status_bundle.txt
   out_of_scope:
     - signed installer
@@ -94,6 +95,7 @@ scope_lock:
 
 facts:
   - Previous implementation only prepared a renderer adapter and still relied on a Vite browser tab for launch.
+  - The previous repo start command could still fall back to starting Vite and opening localhost.
   - Browser folder input can trigger "Vil du laste opp X filer til dette nettstedet?" and is unacceptable for PCC production desktop.
   - Electron provides a Windows .exe runtime and native folder picker via dialog.showOpenDialog.
   - The renderer already consumes safe ScannableEntry records and creates ProjectAnalysisSnapshot through the existing import pipeline.
@@ -101,7 +103,7 @@ facts:
 causal_bridge:
   problem_observed: PCC still behaved like a website at 127.0.0.1 and could show browser upload warnings.
   hypothesized_cause: No packaged desktop runtime layer existed; only the web/Vite renderer path was active.
-  change_made: Added Electron main/preload, packaged .exe build, native folder picker IPC, read-only scanner in main process, desktop runtime detection, and removed browser folder input from desktop mode.
+  change_made: Added Electron main/preload, packaged .exe build, native folder picker IPC, read-only scanner in main process, desktop runtime detection, removed browser folder input from desktop mode, and updated the repo launcher to start the packaged executable instead of Vite/browser.
   expected_effect: Packaged PCC opens as an .exe, loads local file:// renderer, shows Desktop mode active, opens native Windows folder picker, scans selected folder locally, and creates a project named from folder basename.
   evidence_that_effect_happened:
     - corepack pnpm typecheck: pass
@@ -109,6 +111,7 @@ causal_bridge:
     - corepack pnpm build: pass
     - corepack pnpm desktop:pack: pass, exe generated
     - corepack pnpm desktop:smoke: pass, packaged exe launched, desktop mode active, no browser input, no localhost URL, native folder picker observed, smoke import created project using folder basename
+    - corepack pnpm desktop:smoke rerun after launcher update: pass
     - corepack pnpm lint: pass
   causality_confidence: high
 
@@ -137,6 +140,10 @@ verification_state:
       command_or_method: corepack pnpm desktop:smoke
       status: pass
       evidence_ref: "Packaged desktop smoke passed."
+    - check: launcher path
+      command_or_method: Start_Project_Command_Center.cmd
+      status: pass
+      evidence_ref: launcher now delegates only to start-project-command-center.ps1, which starts apps/windows/dist-desktop/win-unpacked/Project Command Center.exe and builds it first if missing
     - check: lint
       command_or_method: corepack pnpm lint
       status: pass
@@ -182,7 +189,7 @@ repo_health:
 recommended_next_action:
   type: user_verify_packaged_exe
   target: apps/windows/dist-desktop/win-unpacked/Project Command Center.exe
-  instruction: Launch PCC from START_PROJECT_COMMAND_CENTER.cmd or directly from the packaged .exe, click Import folder, and select a project folder in the native Windows picker.
+  instruction: Launch PCC from Start_Project_Command_Center.cmd or directly from the packaged .exe, click Import folder, and select a project folder in the native Windows picker.
   success_condition: No browser opens, no 127.0.0.1 is visible, no browser upload warning appears, and the imported project uses the folder basename.
   verification: user visual confirmation on their machine session
 
