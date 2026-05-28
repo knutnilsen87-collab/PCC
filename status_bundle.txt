@@ -1,11 +1,11 @@
 # status_bundle.txt
 
-status_bundle_version: 7
-last_updated: 2026-05-28T23:30:05+02:00
+status_bundle_version: 8
+last_updated: 2026-05-28T23:42:39+02:00
 updated_by: codex
 project_name: Project Command Center
-run_id: pcc-assistant-panel-window-defaults-2026-05-28
-task_id: refactor-assistant-ux-and-desktop-window-behavior
+run_id: pcc-enforced-desktop-window-bounds-2026-05-28
+task_id: enforce-desktop-window-size-on-launch-and-second-instance
 branch: main
 commit_before: 5e2f2aa685d5b8e5de2ff3a112b7f41d890ac20c
 commit_current: current git HEAD containing this status bundle
@@ -16,12 +16,12 @@ commit_current: current git HEAD containing this status bundle
 
 lifecycle_state:
   value: ready_to_ship
-  explanation: PCC now has a packaged Electron Windows desktop runtime, imported folders open into the Project Profile surface, and assistant responses use a compact bottom input plus optional right-side response panel.
+  explanation: PCC now has a packaged Electron Windows desktop runtime, imported folders open into the Project Profile surface, assistant responses use a compact bottom input plus optional right-side response panel, and desktop window bounds are enforced on launch.
 
 status:
   value: pass
-  user_visible_summary: Project Command Center opens as a large desktop workspace. The bottom assistant bar is compact input-only, longer assistant responses open in a right-side panel, and the project surface remains visible.
-  technical_summary: Added assistant display modes, right assistant panel, compact-result behavior, running state, panel toggle/actions, responsive collapse behavior, and updated Electron window defaults to 1440x900 with 1180x760 minimum.
+  user_visible_summary: Project Command Center opens as a large desktop workspace. If a previous small instance is already running, a second launch focuses and resizes it to the comfortable desktop bounds.
+  technical_summary: Electron now computes comfortable bounds from the primary display work area, applies them before show, enforces minimum size, disables fullscreen/maximized launch state, and handles second-instance focus/resize.
 
 desktop_runtime:
   executable: apps/windows/dist-desktop/win-unpacked/Project Command Center.exe
@@ -29,6 +29,8 @@ desktop_runtime:
   default_window_size: 1440x900
   minimum_window_size: 1180x760
   fullscreen_default: false
+  bounds_enforced_on_ready_to_show: true
+  second_instance_resizes_existing_window: true
   renderer_url: file:// packaged dist/index.html
   localhost_required: false
   browser_tab_required: false
@@ -40,7 +42,7 @@ progress_tracking:
   phase: packaged-desktop-runtime
   percent: 100
   blocker: none
-  last_completed_step: assistant panel/window default test and packaged desktop smoke passed
+  last_completed_step: enforced window bounds and packaged desktop smoke passed
   current_step: packaged desktop app updated and verified
   next_step: user visual verification from Start_Project_Command_Center.cmd
 
@@ -87,6 +89,8 @@ scope_lock:
     - assistant shell layout
     - assistant display state
     - desktop window defaults
+    - desktop bounds enforcement
+    - second-instance window focus/resize
     - desktop smoke test assertions
     - status update
   forbidden_change_types:
@@ -106,19 +110,20 @@ facts:
   - The renderer already consumes safe ScannableEntry records and creates ProjectAnalysisSnapshot through the existing import pipeline.
   - Assistant responses were previously rendered in the bottom bar, making longer instructions hard to read while using the project surface.
   - The packaged desktop window needed explicit comfortable desktop sizing.
+  - Initial BrowserWindow size alone could still leave a user with an already-running small window if a second launch focused that existing instance.
 
 causal_bridge:
-  problem_observed: The assistant was only a bottom response/input area, and the desktop workspace could feel too small for the intended command-center UI.
-  hypothesized_cause: Assistant response state was coupled to the bottom bar and no right-side response surface existed.
-  change_made: Added collapsed/right_panel/popout_window/compact_result assistant modes, moved long responses to a right panel, kept the bottom bar compact for input, added running state and panel actions, and updated Electron window defaults.
-  expected_effect: Users can ask from the bottom bar, read longer assistant instructions in a secondary right panel while keeping the project view visible, and launch into a comfortable desktop window.
+  problem_observed: User reported that PCC still starts in a small window.
+  hypothesized_cause: Window size was configured only in BrowserWindow options, not re-applied at ready-to-show or second-instance focus time.
+  change_made: Added enforced comfortable bounds, primary-display centering, fullscreen/maximize normalization, minimum-size enforcement, and second-instance resize/focus behavior.
+  expected_effect: PCC launches as a large centered desktop workspace and clicking the launcher again resizes/focuses any existing PCC window instead of leaving it small.
   evidence_that_effect_happened:
     - corepack pnpm typecheck: pass
     - corepack pnpm test: pass, 43 tests
     - corepack pnpm build: pass
     - corepack pnpm desktop:pack: pass, exe generated
     - corepack pnpm desktop:smoke: pass, packaged exe launched, desktop mode active, no browser input, no localhost URL, native folder picker observed, smoke import created project using folder basename
-    - corepack pnpm desktop:smoke after assistant/window update: pass
+    - corepack pnpm desktop:smoke after enforced window bounds: pass
     - corepack pnpm lint: pass
   causality_confidence: high
 
@@ -176,6 +181,7 @@ packaged_smoke_assertions:
   imported_project_profile_visible_after_import: pass
   desktop_window_large_enough: pass
   desktop_window_not_fullscreen: pass
+  desktop_window_bounds_enforced: pass
   assistant_right_panel_toggle: pass
   assistant_bottom_input_remains_visible: pass
 

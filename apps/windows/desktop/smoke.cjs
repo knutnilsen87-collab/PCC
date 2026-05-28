@@ -162,7 +162,7 @@ async function runImportSmoke() {
 
 function launchDesktopApp(port, userDataDir, env = {}) {
   return spawn(exePath, [`--remote-debugging-port=${port}`, `--user-data-dir=${userDataDir}`], {
-    env: { ...process.env, ...env },
+    env: { ...process.env, PCC_DESKTOP_ALLOW_MULTI_INSTANCE: "1", ...env },
     stdio: "ignore",
   });
 }

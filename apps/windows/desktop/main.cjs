@@ -1,6 +1,14 @@
-const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, screen } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+
+const DEFAULT_WINDOW = {
+  width: 1440,
+  height: 900,
+  minWidth: 1180,
+  minHeight: 760,
+  margin: 80,
+};
 
 const SCAN_POLICY = {
   maxDepth: 8,
@@ -13,13 +21,23 @@ const SCAN_POLICY = {
 
 let mainWindow;
 
+const allowMultiInstance = process.env.PCC_DESKTOP_ALLOW_MULTI_INSTANCE === "1";
+const hasSingleInstanceLock = allowMultiInstance || app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    focusMainWindow();
+  });
+}
+
 function createWindow() {
+  const bounds = getComfortableWindowBounds();
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1180,
-    minHeight: 760,
-    center: true,
+    ...bounds,
+    minWidth: DEFAULT_WINDOW.minWidth,
+    minHeight: DEFAULT_WINDOW.minHeight,
     title: "Project Command Center",
     backgroundColor: "#121214",
     show: false,
@@ -32,18 +50,25 @@ function createWindow() {
   });
 
   mainWindow.removeMenu();
-  mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.once("ready-to-show", () => {
+    applyComfortableWindowBounds(mainWindow);
+    mainWindow.show();
+    mainWindow.focus();
+  });
   mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
 }
 
-app.whenReady().then(() => {
-  registerNativeCommands();
-  createWindow();
+if (hasSingleInstanceLock) {
+  app.whenReady().then(() => {
+    registerNativeCommands();
+    createWindow();
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      else focusMainWindow();
+    });
   });
-});
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -80,6 +105,38 @@ function registerNativeCommands() {
     const entries = await scanFolderReadOnly(folderPath);
     return { folderPath, entries };
   });
+}
+
+function focusMainWindow() {
+  if (!mainWindow) {
+    createWindow();
+    return;
+  }
+
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  applyComfortableWindowBounds(mainWindow);
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function applyComfortableWindowBounds(window) {
+  if (window.isDestroyed()) return;
+  if (window.isFullScreen()) window.setFullScreen(false);
+  if (window.isMaximized()) window.unmaximize();
+  window.setMinimumSize(DEFAULT_WINDOW.minWidth, DEFAULT_WINDOW.minHeight);
+  window.setBounds(getComfortableWindowBounds(), true);
+}
+
+function getComfortableWindowBounds() {
+  const { workArea } = screen.getPrimaryDisplay();
+  const width = Math.min(DEFAULT_WINDOW.width, Math.max(DEFAULT_WINDOW.minWidth, workArea.width - DEFAULT_WINDOW.margin));
+  const height = Math.min(DEFAULT_WINDOW.height, Math.max(DEFAULT_WINDOW.minHeight, workArea.height - DEFAULT_WINDOW.margin));
+  return {
+    width,
+    height,
+    x: Math.round(workArea.x + (workArea.width - width) / 2),
+    y: Math.round(workArea.y + (workArea.height - height) / 2),
+  };
 }
 
 async function scanFolderReadOnly(rootPath) {
