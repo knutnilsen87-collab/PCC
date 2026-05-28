@@ -1,14 +1,14 @@
 # status_bundle.txt
 
 status_bundle_version: 4
-last_updated: 2026-05-28T14:44:28+02:00
+last_updated: 2026-05-28T14:46:53+02:00
 updated_by: codex
 project_name: Project Command Center
 run_id: pcc-packaged-desktop-runtime-2026-05-28
 task_id: implement-real-windows-desktop-runtime-native-folder-import
 branch: main
 commit_before: 5e2f2aa685d5b8e5de2ff3a112b7f41d890ac20c
-commit_current: pending
+commit_current: e903645a960e3258f2ce484fd9c36f707839e850
 
 ============================================================
 1. CURRENT STATE
@@ -38,8 +38,8 @@ progress_tracking:
   percent: 100
   blocker: none
   last_completed_step: packaged desktop smoke passed
-  current_step: commit and push pending
-  next_step: commit and push desktop runtime implementation
+  current_step: desktop runtime committed locally
+  next_step: push desktop runtime implementation
 
 ============================================================
 2. TASK AND SCOPE
@@ -197,6 +197,5 @@ closure_readiness:
   remaining_unknowns:
     - whether user wants an installer shortcut in addition to the generated .exe
   follow_up_required:
-    - commit
     - push
   final_user_summary: PCC now has a packaged Windows desktop .exe with native folder picker import and no browser upload fallback in desktop mode.
