@@ -94,6 +94,7 @@ export function getAssistantQuickActions(project?: Project): string[] {
 export function getProjectDisplayName(project: Project, analysis?: ProjectAnalysisSnapshot): string {
   const manualDisplayName = (project as Project & { displayName?: string }).displayName?.trim();
   if (manualDisplayName) return humanizeProjectName(manualDisplayName);
+  if (project.origin === "local_folder_import") return project.name.trim() || "Imported Project";
   const detectedName = analysis?.summary.detectedName?.trim();
   if (detectedName && detectedName.toLowerCase() !== "unknown") return humanizeProjectName(detectedName);
   return humanizeProjectName(project.name || "Untitled project");

@@ -8,7 +8,7 @@
     "build": "corepack pnpm --filter @pcc/windows build",
     "lint": "corepack pnpm --filter @pcc/schemas --filter @pcc/local-fs --filter @pcc/repo-analyzer --filter @pcc/project-import --filter @pcc/domain --filter @pcc/assistant --filter @pcc/windows lint",
     "typecheck": "corepack pnpm --filter @pcc/schemas --filter @pcc/local-fs --filter @pcc/repo-analyzer --filter @pcc/project-import --filter @pcc/domain --filter @pcc/assistant --filter @pcc/windows typecheck",
-    "test": "vitest run packages/schemas/src/index.test.ts packages/local-fs/src/index.test.ts packages/repo-analyzer/src/index.test.ts packages/project-import/src/index.test.ts packages/domain/src/index.test.ts packages/assistant/src/index.test.ts apps/windows/src/importOverview.test.ts",
+    "test": "vitest run packages/schemas/src/index.test.ts packages/local-fs/src/index.test.ts packages/repo-analyzer/src/index.test.ts packages/project-import/src/index.test.ts packages/domain/src/index.test.ts packages/assistant/src/index.test.ts apps/windows/src/importOverview.test.ts apps/windows/src/localFolderImport.test.ts",
     "test:e2e": "echo e2e:manual-browser-verification",
     "db:migrate": "pnpm --filter @pcc/api db:migrate",
     "db:seed": "pnpm --filter @pcc/api db:seed"

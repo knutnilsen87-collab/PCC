@@ -40,6 +40,13 @@ import { DEFAULT_SCAN_POLICY, scanVirtualEntries, shouldSkipPath, type Scannable
 import { buildLocalFolderImportDraft } from "@pcc/project-import";
 import type { AttachmentCategory, Project, ProjectAnalysisSnapshot } from "@pcc/schemas";
 import {
+  WEB_DEMO_FALLBACK_LABEL,
+  buildFolderNamedImportDraft,
+  getFolderImportMode,
+  pickDesktopFolder,
+  type DesktopImportWindow,
+} from "./localFolderImport";
+import {
   friendlyProjectSummary,
   buildTodayProjectRows,
   getAssistantQuickActions,
@@ -54,18 +61,6 @@ import {
 } from "./importOverview";
 
 const storageKey = "pcc.local.state.v1";
-
-interface BrowserFileHandle {
-  kind: "file";
-  name: string;
-  getFile(): Promise<File>;
-}
-
-interface BrowserDirectoryHandle {
-  kind: "directory";
-  name: string;
-  entries(): AsyncIterableIterator<[string, BrowserFileHandle | BrowserDirectoryHandle]>;
-}
 
 type ImportState =
   | { status: "idle" }
@@ -88,9 +83,9 @@ export function App() {
   const [assistantOutput, setAssistantOutput] = useState("Import a folder or create a project to start your command center.");
   const [fileCategory, setFileCategory] = useState<AttachmentCategory>("docs");
   const [importState, setImportState] = useState<ImportState>({ status: "idle" });
-  const [directoryHandles, setDirectoryHandles] = useState<Record<string, BrowserDirectoryHandle>>({});
   const assistantInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const folderImportMode = getFolderImportMode(window as unknown as DesktopImportWindow);
 
   const activeProject = state.projects.find((project) => project.id === activeProjectId) ?? state.projects[0];
   const activeDisplayName = activeProject ? getProjectDisplayName(activeProject, getLatestAnalysisSnapshot(state, activeProject.id)) : undefined;
@@ -147,20 +142,24 @@ export function App() {
   }
 
   async function handleImportFolder() {
-    setImportState({ status: "picking_folder", message: "Opening folder picker..." });
+    setImportState({ status: "picking_folder", message: "Opening native desktop folder picker..." });
     try {
-      const picker = (window as unknown as { showDirectoryPicker?: () => Promise<BrowserDirectoryHandle> }).showDirectoryPicker;
-      if (!picker) {
-        const message = "Choose a folder in the browser dialog. This fallback imports files read-only without keeping a rescan handle.";
-        setImportState({ status: "picking_folder", message });
-        setAssistantOutput(message);
-        folderInputRef.current?.click();
+      const desktopWindow = window as unknown as DesktopImportWindow;
+      if (getFolderImportMode(desktopWindow) === "desktop") {
+        const selectedFolder = await pickDesktopFolder(desktopWindow);
+        if (!selectedFolder) {
+          setImportState({ status: "cancelled", message: "Folder import cancelled." });
+          return;
+        }
+        setImportState({ status: "folder_selected", message: `Selected ${selectedFolder.folderPath}.` });
+        await importScannedFolder(selectedFolder.folderPath, selectedFolder.entries, "desktop");
         return;
       }
-      const handle = await picker();
-      setImportState({ status: "folder_selected", message: `Selected ${handle.name}.` });
-      const imported = await importDirectoryHandle(handle);
-      setDirectoryHandles((current) => ({ ...current, [imported.projectId]: handle }));
+
+      const message = `${WEB_DEMO_FALLBACK_LABEL}. Use this only for local development or demo import.`;
+      setImportState({ status: "picking_folder", message });
+      setAssistantOutput(`${message} The production desktop app uses a native folder picker and does not trigger browser upload prompts.`);
+      folderInputRef.current?.click();
     } catch (error) {
       const message = error instanceof DOMException && error.name === "AbortError" ? "Folder import cancelled." : error instanceof Error ? error.message : "Folder import failed.";
       setImportState({ status: message.includes("cancelled") ? "cancelled" : "failed", message });
@@ -189,37 +188,17 @@ export function App() {
     const firstPath = getBrowserFileRelativePath(files[0]);
     const rootName = firstPath.includes("/") ? firstPath.split("/")[0] : "selected-folder";
     setImportState({ status: "folder_selected", message: `Selected ${rootName}.` });
-    setImportState({ status: "scanning", message: "Reading safe metadata..." });
     const entries = await collectBrowserFileEntries(files, rootName);
     const displayPath = `[selected-folder]/${rootName}`;
-    const scan = scanVirtualEntries(displayPath, entries);
-    setImportState({ status: "analyzing", message: "Detecting repo status and project signals..." });
-    const draft = buildLocalFolderImportDraft(displayPath, scan);
-    setImportState({ status: "creating_project", message: "Creating project analysis..." });
-    const result = importLocalFolderProject(state, draft);
-    setState(result.state);
-    setActiveProjectId(result.projectId);
-    setViewMode("project");
-    const importedProject = result.state.projects.find((project) => project.id === result.projectId);
-    const displayName = importedProject ? getProjectDisplayName(importedProject, getLatestAnalysisSnapshot(result.state, result.projectId)) : draft.projectName;
-    const message = result.duplicate ? `Opened existing project: ${displayName}.` : `Project added: ${displayName}. Safe scan complete.`;
-    setAssistantOutput(
-      result.duplicate
-        ? message
-        : "Project added. This browser fallback cannot keep a rescan handle after reload, but the safe import is ready.",
-    );
-    setImportState({ status: "completed", message });
-    return result;
+    return importScannedFolder(displayPath, entries, "web_demo");
   }
 
-  async function importDirectoryHandle(handle: BrowserDirectoryHandle) {
-    setImportState({ status: "scanning", message: "Reading safe metadata..." });
-    const entries = await collectDirectoryEntries(handle);
-    const displayPath = `[selected-folder]/${handle.name}`;
-    const scan = scanVirtualEntries(displayPath, entries);
-    setImportState({ status: "analyzing", message: "Detecting repo status and project signals..." });
-    const draft = buildLocalFolderImportDraft(displayPath, scan);
-    setImportState({ status: "creating_project", message: "Creating project analysis..." });
+  async function importScannedFolder(folderPath: string, entries: ScannableEntry[], source: "desktop" | "web_demo") {
+    setImportState({ status: "scanning", message: "Reading safe metadata locally..." });
+    const scan = scanVirtualEntries(folderPath, entries);
+    setImportState({ status: "analyzing", message: "Creating safe project analysis snapshot..." });
+    const draft = buildFolderNamedImportDraft({ folderPath, scan, existingProjects: state.projects });
+    setImportState({ status: "creating_project", message: "Creating project overview..." });
     const result = importLocalFolderProject(state, draft);
     setState(result.state);
     setActiveProjectId(result.projectId);
@@ -227,16 +206,16 @@ export function App() {
     const importedProject = result.state.projects.find((project) => project.id === result.projectId);
     const displayName = importedProject ? getProjectDisplayName(importedProject, getLatestAnalysisSnapshot(result.state, result.projectId)) : draft.projectName;
     const message = result.duplicate ? `Opened existing project: ${displayName}.` : `Project added: ${displayName}. Safe scan complete.`;
-    setAssistantOutput(result.duplicate ? message : "Project added. Ask for a summary, next step, resume snapshot, or Codex handoff.");
+    setAssistantOutput(result.duplicate ? message : getImportSuccessMessage(source));
     setImportState({ status: "completed", message });
     return result;
   }
 
   async function handleRescanActiveProject() {
     if (!activeProject) return;
-    const handle = directoryHandles[activeProject.id];
-    if (!handle) {
-      const message = "Run deeper scan needs the same folder selected in this browser session. Re-import the folder to reconnect the read-only handle.";
+    const desktopWindow = window as unknown as DesktopImportWindow;
+    if (getFolderImportMode(desktopWindow) !== "desktop") {
+      const message = `${WEB_DEMO_FALLBACK_LABEL}. Re-import the folder in this demo mode to create a fresh safe scan.`;
       setImportState({
         status: "failed",
         message,
@@ -244,10 +223,15 @@ export function App() {
       setAssistantOutput(message);
       return;
     }
-    setImportState({ status: "scanning", message: "Rescanning active project read-only..." });
-    const entries = await collectDirectoryEntries(handle);
-    const displayPath = activeProject.localFolderPath ?? `[selected-folder]/${handle.name}`;
-    const scan = scanVirtualEntries(displayPath, entries);
+
+    const selectedFolder = await pickDesktopFolder(desktopWindow);
+    if (!selectedFolder) {
+      setImportState({ status: "cancelled", message: "Rescan cancelled." });
+      return;
+    }
+    setImportState({ status: "scanning", message: "Rescanning selected folder read-only..." });
+    const displayPath = selectedFolder.folderPath || activeProject.localFolderPath || activeProject.name;
+    const scan = scanVirtualEntries(displayPath, selectedFolder.entries);
     const draft = buildLocalFolderImportDraft(displayPath, scan);
     setState(rescanLocalFolderProject(state, activeProject.id, draft));
     setImportState({ status: "completed", message: "New immutable analysis snapshot created." });
@@ -390,6 +374,7 @@ export function App() {
           <button type="button" className="primary" onClick={handleImportFolder} aria-label="Import local project folder">
             <FolderPlus size={16} /> Import folder
           </button>
+          {folderImportMode === "web_demo" && <p className="web-demo-fallback-note">{WEB_DEMO_FALLBACK_LABEL}</p>}
           <label>
             <span>Create empty project</span>
             <input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Project name" />
@@ -1035,6 +1020,7 @@ function ImportedProjectOverview({
   const recommended = getRecommendedAction({ analysis, resume });
   const displayStatus = getImportedProjectDisplayStatus({ project, analysis, resume, openBlockers: blockers });
   const displayName = getProjectDisplayName(project, analysis);
+  const nextStep = resume?.nextExactStep ?? analysis.recommendedNextStep ?? project.nextExactStep ?? "Review the project summary and confirm the next step.";
   const attention = analysis.blockers.length
     ? analysis.blockers.map((blocker) => blocker.title)
     : analysis.risks.filter((risk) => risk.severity !== "info").map((risk) => risk.title);
@@ -1048,37 +1034,49 @@ function ImportedProjectOverview({
 
   return (
     <div className="project-surface imported-overview command-canvas">
-      <section className="imported-header">
+      <section className="imported-header compact-imported-header">
         <div>
-          <span className="eyebrow">Imported project</span>
-          <h2>{displayName}</h2>
-          <p className="quiet-body">Raw: {project.name}</p>
-          <p>{friendlyProjectSummary(analysis)}</p>
+          <span className="eyebrow">Project imported</span>
+          <h2>Project imported: {displayName}</h2>
+          <p>{analysis.summary.shortSummary}</p>
         </div>
         <span className="status-pill">{displayStatus}</span>
       </section>
 
-      <section className="next-action-card resume-hero">
+      <section className="next-action-card resume-hero simple-project-hero">
         <div>
-          <span className="eyebrow">Next action</span>
+          <span className="eyebrow">What should happen next?</span>
           <h3>{recommended.title}</h3>
           <p>{recommended.why}</p>
+          <div className="simple-status-grid" aria-label="Project import status">
+            <div>
+              <span>Project</span>
+              <strong>{displayName}</strong>
+            </div>
+            <div>
+              <span>Approx. complete</span>
+              <strong>{project.progress}%</strong>
+            </div>
+            <div>
+              <span>Status</span>
+              <strong>{analysis.summary.statusSummary}</strong>
+            </div>
+          </div>
+          <p className="next-planned-step">
+            <span>Next planned step</span>
+            {nextStep}
+          </p>
         </div>
         <div className="next-action-buttons">
           <button type="button" className="primary" onClick={onCreateResumeFromAnalysis}>
             <ShieldCheck size={16} /> {recommended.primaryCta}
           </button>
-          {recommended.secondaryActions.map((action) => (
-            <button type="button" key={action} onClick={() => (action === "Run deeper scan" ? onRescan() : onAssistantQuickAction(action))}>
-              {action}
-            </button>
-          ))}
         </div>
       </section>
 
       <ImportProgress state={importState} />
 
-      <section className="setup-checklist-card mission-strip">
+      <section className="setup-checklist-card mission-strip compact-mission-strip">
         <span className="eyebrow">Setup progress</span>
         <h3>{getSetupProgressText(checklist)}</h3>
         <ol className="setup-checklist">
@@ -1091,28 +1089,17 @@ function ImportedProjectOverview({
         </ol>
       </section>
 
-      <section className="project-document">
+      <section className="project-document simple-overview-grid">
         <article className="overview-card context-card">
-          <span className="eyebrow">Context</span>
+          <span className="eyebrow">Project summary</span>
           <h3>{analysis.summary.statusSummary}</h3>
-          <p>{analysis.summary.shortSummary}</p>
-          <p className="quiet-body">{analysis.docs.readmeFiles.length ? "A README or project documentation was found." : "No README was found in the safe scan."}</p>
+          <p>{friendlyProjectSummary(analysis)}</p>
         </article>
 
         <article className="overview-card">
-          <span className="eyebrow">Attention</span>
+          <span className="eyebrow">Important areas/files</span>
           <ul className="friendly-list">
-            {attention.slice(0, 5).map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-            {!attention.length && <li>No immediate attention items found.</li>}
-          </ul>
-        </article>
-
-        <article className="overview-card">
-          <span className="eyebrow">Important files</span>
-          <ul className="friendly-list">
-            {analysis.files.importantFiles.slice(0, 5).map((file) => (
+            {analysis.files.importantFiles.slice(0, 4).map((file) => (
               <li key={file.path}>
                 <strong>{formatFileName(file.path)}</strong>
                 <span>{file.reason}</span>
@@ -1121,7 +1108,28 @@ function ImportedProjectOverview({
             {!analysis.files.importantFiles.length && <li>No key files stood out in the safe scan.</li>}
           </ul>
         </article>
+
+        <article className="overview-card">
+          <span className="eyebrow">{blockers.length ? "Attention needed" : "Observations"}</span>
+          <ul className="friendly-list">
+            {attention.slice(0, 4).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+            {!attention.length && <li>No immediate attention items found.</li>}
+          </ul>
+        </article>
       </section>
+
+      <details className="project-context-details">
+        <summary>More actions</summary>
+        <div className="secondary-action-grid">
+          {recommended.secondaryActions.map((action) => (
+            <button type="button" key={action} onClick={() => (action === "Run deeper scan" ? onRescan() : onAssistantQuickAction(action))}>
+              {action}
+            </button>
+          ))}
+        </div>
+      </details>
 
       <details className="technical-details">
         <summary>Technical scan details</summary>
@@ -1267,6 +1275,14 @@ function formatFileName(path: string): string {
   return parent ? `${parent}/${file}` : file;
 }
 
+function getImportSuccessMessage(source: "desktop" | "web_demo"): string {
+  if (source === "desktop") {
+    return "Project added from the native desktop picker. The scan stayed local and read-only.";
+  }
+
+  return `${WEB_DEMO_FALLBACK_LABEL}. Project added from a one-time browser file selection. The demo fallback does not retain folder access.`;
+}
+
 async function collectBrowserFileEntries(files: FileList, rootName: string): Promise<ScannableEntry[]> {
   const entries: ScannableEntry[] = [];
   const seenDirectories = new Set<string>();
@@ -1312,43 +1328,4 @@ async function collectBrowserFileEntries(files: FileList, rootName: string): Pro
 
 function getBrowserFileRelativePath(file: File): string {
   return (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
-}
-
-async function collectDirectoryEntries(handle: BrowserDirectoryHandle): Promise<ScannableEntry[]> {
-  const entries: ScannableEntry[] = [];
-  await walkDirectory(handle, "", entries, 0);
-  return entries;
-}
-
-async function walkDirectory(handle: BrowserDirectoryHandle, basePath: string, entries: ScannableEntry[], depth: number) {
-  if (depth > DEFAULT_SCAN_POLICY.maxDepth + 1 || entries.length > DEFAULT_SCAN_POLICY.maxFiles * 2) return;
-  for await (const [name, child] of handle.entries()) {
-    const relativePath = basePath ? `${basePath}/${name}` : name;
-    if (child.kind === "directory") {
-      entries.push({ path: relativePath, kind: "directory" });
-      if (!shouldSkipPath(relativePath)) {
-        await walkDirectory(child, relativePath, entries, depth + 1);
-      }
-      continue;
-    }
-
-    const file = await child.getFile();
-    let content: string | undefined;
-    const skipReason = shouldSkipPath(relativePath);
-    const canReadContent =
-      !skipReason &&
-      file.size <= DEFAULT_SCAN_POLICY.maxFileBytesForContentRead &&
-      (file.type.startsWith("text/") || /\.(json|md|ts|tsx|js|jsx|css|html|yaml|yml|toml|rs|go|py|sql)$/i.test(file.name));
-    if (canReadContent) {
-      content = await file.text();
-    }
-    entries.push({
-      path: relativePath,
-      kind: "file",
-      sizeBytes: file.size,
-      modifiedAt: new Date(file.lastModified).toISOString(),
-      content,
-      isBinary: Boolean(file.type && !file.type.startsWith("text/") && !/\.(json|md|ts|tsx|js|jsx|css|html|yaml|yml|toml|rs|go|py|sql)$/i.test(file.name)),
-    });
-  }
 }

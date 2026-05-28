@@ -119,16 +119,22 @@ describe("import overview presentation", () => {
     expect(humanizeProjectName("PCC")).toBe("PCC");
   });
 
-  it("uses detected names for project display names", () => {
-    const technicalProject = { ...project, name: "com.unity.multiplayer.center" };
+  it("uses detected names for manual project display names", () => {
+    const technicalProject = { ...project, name: "com.unity.multiplayer.center", origin: "manual" as const };
     const detectedAnalysis = { ...analysis, summary: { ...analysis.summary, detectedName: "com.unity.multiplayer.center" } };
     expect(getProjectDisplayName(technicalProject, detectedAnalysis)).toBe("Unity Multiplayer Center");
+  });
+
+  it("keeps imported folder names as the project display name", () => {
+    const importedProject = { ...project, name: "bulkIMG" };
+    const detectedAnalysis = { ...analysis, summary: { ...analysis.summary, detectedName: "com.internal.package" } };
+    expect(getProjectDisplayName(importedProject, detectedAnalysis)).toBe("bulkIMG");
   });
 
   it("builds Today rows with friendly names and status text", () => {
     const state = {
       ...createInitialState("2026-05-27T00:00:00.000Z"),
-      projects: [{ ...project, name: "com.unity.multiplayer.center", nextExactStep: "Review setup" }],
+      projects: [{ ...project, name: "com.unity.multiplayer.center", origin: "manual" as const, nextExactStep: "Review setup" }],
       projectAnalysisSnapshots: [{ ...analysis, summary: { ...analysis.summary, detectedName: "com.unity.multiplayer.center" } }],
     };
 

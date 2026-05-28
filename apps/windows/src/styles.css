@@ -159,6 +159,15 @@ p {
   display: none;
 }
 
+.web-demo-fallback-note {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 9px 10px;
+}
+
 .sidebar {
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border-soft);
@@ -733,6 +742,10 @@ p {
   font-size: 24px;
 }
 
+.compact-imported-header p {
+  color: var(--text-muted);
+}
+
 .resume-hero {
   align-items: center;
   display: grid;
@@ -748,14 +761,67 @@ p {
   max-width: 760px;
 }
 
+.simple-project-hero {
+  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, auto);
+  min-height: 260px;
+}
+
+.simple-project-hero h3 {
+  font-size: 34px;
+  line-height: 1.08;
+  max-width: 760px;
+}
+
+.simple-status-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 22px;
+  max-width: 800px;
+}
+
+.simple-status-grid div {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 6px;
+  min-height: 82px;
+  padding: 13px;
+}
+
+.simple-status-grid span,
+.next-planned-step span {
+  color: var(--text-faint);
+  display: block;
+  font-size: 12px;
+}
+
+.simple-status-grid strong {
+  color: var(--text-main);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.next-planned-step {
+  background: rgba(124, 247, 212, 0.08);
+  border: 1px solid rgba(124, 247, 212, 0.18);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  margin-top: 12px;
+  padding: 12px 13px;
+}
+
 .next-action-buttons {
+  align-content: center;
   justify-content: flex-end;
   max-width: 510px;
 }
 
 .next-action-buttons .primary {
-  min-height: 44px;
-  padding-inline: 16px;
+  min-height: 52px;
+  padding-inline: 20px;
 }
 
 .mission-strip {
@@ -802,6 +868,10 @@ p {
   grid-template-columns: 1fr;
 }
 
+.simple-overview-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .context-card {
   min-height: 0;
 }
@@ -834,6 +904,26 @@ p {
   gap: 6px;
   margin: 8px 0 0;
   padding-left: 18px;
+}
+
+.project-context-details {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  padding: 14px 16px;
+}
+
+.project-context-details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.secondary-action-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 13px;
 }
 
 .repo-view {
@@ -876,10 +966,12 @@ p {
 
   .grid,
   .overview-grid,
+  .simple-overview-grid,
   .analysis-columns,
   .analysis-grid,
   .repo-meta-grid,
-  .technical-detail-grid {
+  .technical-detail-grid,
+  .simple-status-grid {
     grid-template-columns: 1fr;
   }
 

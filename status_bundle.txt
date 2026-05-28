@@ -1,13 +1,13 @@
 # status_bundle.txt
 
-status_bundle_version: 2
-last_updated: 2026-05-28T08:27:36+02:00
+status_bundle_version: 3
+last_updated: 2026-05-28T09:04:05+02:00
 updated_by: codex
 project_name: Project Command Center
-run_id: pcc-folder-fallback-2026-05-28
-task_id: fix-import-folder-fallback-and-update-status-bundle
+run_id: pcc-desktop-first-folder-import-2026-05-28
+task_id: desktop-first-local-folder-import-and-folder-name-default
 branch: main
-commit_before: 106d0efa2d023b8a08c41bce99fb60fdd8b2b810
+commit_before: baabfc9432a28cb7954e8129f0b09a83d11a19d7
 commit_current: pending
 
 ============================================================
@@ -15,58 +15,65 @@ commit_current: pending
 ============================================================
 
 lifecycle_state:
-  value: verifying
-  explanation: Import folder still failed in Brave because showDirectoryPicker was unavailable. A webkitdirectory file input fallback has been added and verified in the DOM.
+  value: ready_to_ship
+  explanation: Local folder import has been refactored to prefer a native desktop adapter. Browser folder input is now explicitly a web demo fallback, not the primary product path.
 
 status:
-  value: verifying
-  user_visible_summary: Import folder now falls back to the browser's folder input when File System Access is unavailable. The fallback imports selected files read-only into the same analysis pipeline.
-  technical_summary: App.tsx now uses a hidden file input with webkitdirectory/directory attributes, converts FileList entries to ScannableEntry records, and imports via buildLocalFolderImportDraft/importLocalFolderProject.
+  value: pass
+  user_visible_summary: Import folder now targets the desktop-native picker first, creates a project named after the selected folder, and shows a simple overview focused on project name, progress, status, next step, and one primary action.
+  technical_summary: Added a FolderPickerAdapter-style desktop import helper, folder-basename naming with duplicate suffixes, safe ProjectAnalysisSnapshot import drafting, demo fallback labeling, and focused tests.
 
 progress_tracking:
-  phase: folder-import-fallback
-  percent: 90
+  phase: desktop-first-import
+  percent: 100
   blocker: none
-  last_completed_step: typecheck, tests, build, and DOM fallback smoke passed after code patch
+  last_completed_step: typecheck, tests, and build passed after code patch
   current_step: commit and push pending
-  next_step: commit patched App.tsx/styles.css plus updated status_bundle.txt
+  next_step: commit and push to GitHub
 
 ============================================================
 2. TASK AND SCOPE
 ============================================================
 
 task:
-  user_request: Screenshot showed Import folder error: folder picker unavailable; previous instruction also required status_bundle update after fixes.
-  desired_outcome: Import folder works in browsers without showDirectoryPicker by using a fallback folder input, and status_bundle.txt records the transition.
+  user_request: Make Project Command Center desktop-first for local folder import, avoid browser upload prompts in production desktop mode, keep technical scan details hidden by default, and derive imported project names from the selected folder basename.
+  desired_outcome: Selecting a folder through the desktop app creates/imports a project named after that folder, shows it in the sidebar/header, scans locally read-only, and presents a calm human-readable overview.
   non_goals:
-    - no schema changes
-    - no dependency changes
-    - no domain rewrite
-    - no folder import behavior beyond clearer feedback
+    - no domain logic rewrite
+    - no schema migration
+    - no dependency additions
+    - no broad UI redesign outside imported project overview
   constraints:
     - preserve approval-based AI mutation behavior
-    - keep Project Command Center UI dark/calm
-    - use smallest safe fix
+    - keep assistant away from raw unrestricted filesystem access
+    - keep scan pipeline read-only and safe
+    - browser fallback can remain only as a clearly labeled local demo path
 
 scope_lock:
   in_scope:
     - apps/windows/src/App.tsx
+    - apps/windows/src/importOverview.ts
+    - apps/windows/src/localFolderImport.ts
+    - apps/windows/src/localFolderImport.test.ts
+    - apps/windows/src/importOverview.test.ts
     - apps/windows/src/styles.css
+    - package.json
     - status_bundle.txt
   out_of_scope:
     - packages/domain public contracts
     - packages/schemas public contracts
-    - dependencies
-    - broad UI redesign
+    - packages/project-import public contract changes
+    - new dependencies
   allowed_change_types:
-    - code_patch
-    - status_patch
-    - config_patch
+    - focused UI patch
+    - adapter helper
+    - focused tests
+    - status update
   forbidden_change_types:
-    - broad_refactor_without_approval
-    - unrelated_cleanup
-    - hidden_behavior_change
-    - incompatible_contract_change
+    - broad refactor
+    - unrelated redesign
+    - raw filesystem exposure to assistant
+    - browser upload prompt as production path
   scope_change_required: false
 
 ============================================================
@@ -74,24 +81,24 @@ scope_lock:
 ============================================================
 
 facts:
-  - User screenshot showed "Folder picker is not available in this browser" after clicking Import folder.
-  - Brave/Chromium contexts may not expose window.showDirectoryPicker, but can still support input type=file with webkitdirectory.
-  - DOM verification after patch confirmed hidden folder input exists with type=file, multiple, webkitdirectory, and directory attributes.
+  - User observed browser upload warning language when using folder import.
+  - Intended product direction is desktop-first, not website-style upload.
+  - The existing scanner already accepts safe ScannableEntry records and produces ProjectAnalysisSnapshot data through the existing import pipeline.
+  - Imported project display names previously could be influenced by detected package/framework names.
 
 causal_bridge:
-  problem_observed: Import folder could not proceed because showDirectoryPicker was unavailable.
-  hypothesized_cause: The app only supported the File System Access API folder picker and had no fallback for browsers exposing only webkitdirectory file input.
-  change_made: Added hidden folder input fallback, FileList-to-ScannableEntry conversion, and browser-file import path through the existing read-only analysis pipeline.
-  expected_effect: Clicking Import folder opens a selectable folder dialog even when showDirectoryPicker is unavailable; selected files become a local-folder-import project.
+  problem_observed: Import folder felt like a browser upload flow and could name/show projects using technical detection instead of the selected folder name.
+  hypothesized_cause: The UI preferred browser folder APIs and did not separate native folder selection from safe folder analysis in the app layer.
+  change_made: Added a desktop picker adapter path, demoted the browser input to a labeled web demo fallback, derived display names from selected folder basenames, and simplified the imported project overview.
+  expected_effect: Desktop production can inject/use the native picker path without triggering browser upload prompts; imported projects appear under the selected folder name and default to a plain-language next-action screen.
   evidence_that_effect_happened:
     - corepack pnpm typecheck: pass
-    - corepack pnpm test: pass, 31 tests
+    - corepack pnpm test: pass, 39 tests
     - corepack pnpm build: pass
-    - browser DOM smoke: hidden folder input has type=file, multiple, webkitdirectory, and directory attributes; no console errors
   alternate_hypotheses:
-    - a browser profile could block file/folder input dialogs from automation or due to policy
-    - stale dev server/cache could show old behavior until refresh
-  causality_confidence: high
+    - a desktop shell still needs to provide the pcc_pick_and_scan_folder command or __PCC_DESKTOP__.pickAndScanFolder bridge
+    - stale browser/dev server cache can show previous fallback text until refresh
+  causality_confidence: medium_high
 
 ============================================================
 4. VERIFICATION STATE
@@ -107,21 +114,21 @@ verification_state:
     - check: tests
       command_or_method: corepack pnpm test
       status: pass
-      evidence_ref: terminal output, 7 files passed, 31 tests passed
+      evidence_ref: terminal output, 8 files passed, 39 tests passed
     - check: build
       command_or_method: corepack pnpm build
       status: pass
       evidence_ref: terminal output, Vite build completed
-    - check: button smoke
-      command_or_method: local browser automation at http://127.0.0.1:5173
+    - check: diff review
+      command_or_method: git diff
       status: pass
-      evidence_ref: hidden folder fallback input present with expected attributes, no console errors
+      evidence_ref: local diff reviewed before commit
 
 verification_results:
   tests:
     command: corepack pnpm test
     status: pass
-    summary: 31 tests passed
+    summary: 39 tests passed
   typecheck:
     command: corepack pnpm typecheck
     status: pass
@@ -132,16 +139,16 @@ verification_results:
     summary: @pcc/windows Vite build passed
   manual_review:
     status: pass
-    notes: Browser smoke verified fallback wiring without opening an OS file dialog.
+    notes: Diff reviewed; desktop runtime bridge remains an external integration point if not present in packaging.
 
 coverage_assessment:
   changed_behavior_covered: partial
-  changed_files_covered: partial
+  changed_files_covered: good
   untested_risk_areas:
-    - selecting a real folder in the user's Brave profile requires user interaction with the OS dialog
-    - fallback imports files read-only but cannot retain a rescan directory handle after reload
-  false_green_risk: low
-  residual_risk: low
+    - actual native desktop shell command implementation is provided outside the current Vite-only app tree
+    - real OS folder picker interaction requires the desktop runtime
+  false_green_risk: medium
+  residual_risk: medium
 
 ============================================================
 5. REPO HEALTH
@@ -154,7 +161,7 @@ repo_health:
   boundary_impact: low
   duplication_risk: low
   dependency_sprawl_risk: none
-  naming_consistency: preserved
+  naming_consistency: improved
   temporary_mess_introduced:
     value: false
     cleanup_path: n/a
@@ -165,22 +172,23 @@ repo_health:
 ============================================================
 
 recommended_next_action:
-  type: verify_only
-  target: user browser at http://127.0.0.1:5173
-  instruction: Hard refresh or restart dev server, click Import folder, select the project folder in the browser dialog, and confirm the project appears.
-  success_condition: Import folder opens a folder chooser and creates/imports the selected project.
-  verification: user confirms import succeeds in their browser
+  type: verify_and_ship
+  target: main branch
+  instruction: Run build, inspect diff, commit, and push the desktop-first folder import patch.
+  success_condition: Build passes and GitHub main contains the update.
+  verification: corepack pnpm build and git push
 
 fallback_action:
-  type: narrower_check
-  instruction: If folder dialog still does not open, try the repo launcher or a standard Chrome/Edge window and capture browser console errors.
+  type: desktop_bridge_followup
+  instruction: If the production desktop runtime lacks pcc_pick_and_scan_folder or __PCC_DESKTOP__.pickAndScanFolder, add that native bridge in the shell layer next.
 
 closure_readiness:
   can_claim_success: true
-  terminal_state_candidate: succeeded
-  rationale: Code patch, automated checks, and DOM fallback verification passed.
+  terminal_state_candidate: succeeded_after_push
+  rationale: Typecheck, tests, build, and diff review passed.
   remaining_unknowns:
-    - exact OS folder dialog behavior in the user's Brave profile
+    - actual native shell bridge availability in the production desktop packaging layer
   follow_up_required:
-    - hard refresh or restart dev server if stale client bundle remains loaded
-  final_user_summary: Import folder now has a fallback folder chooser for browsers without showDirectoryPicker; status_bundle.txt has been updated.
+    - commit
+    - push
+  final_user_summary: Desktop-first import path is implemented in the UI/app layer; browser fallback is demo-labeled; selected folder basename becomes the project name.
