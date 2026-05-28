@@ -8,7 +8,7 @@ run_id: pcc-packaged-desktop-runtime-2026-05-28
 task_id: implement-real-windows-desktop-runtime-native-folder-import
 branch: main
 commit_before: 5e2f2aa685d5b8e5de2ff3a112b7f41d890ac20c
-commit_current: 8f24602b
+commit_current: current git HEAD containing this status bundle
 
 ============================================================
 1. CURRENT STATE
