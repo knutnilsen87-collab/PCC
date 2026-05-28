@@ -31,6 +31,15 @@ async function runNativeDialogSmoke() {
   try {
     const page = await connectToFirstPage(nativeDialogPort);
     runtime = await createCdpClient(page.webSocketDebuggerUrl);
+    const windowInfo = await waitFor(() => evaluate(runtime, () => ({
+      outerWidth: window.outerWidth,
+      outerHeight: window.outerHeight,
+      screenWidth: window.screen.width,
+      screenHeight: window.screen.height,
+    })));
+    assert(windowInfo.outerWidth >= 1400, `Desktop window opened too narrow: ${JSON.stringify(windowInfo)}`);
+    assert(windowInfo.outerHeight >= 860, `Desktop window opened too short: ${JSON.stringify(windowInfo)}`);
+    assert(windowInfo.outerWidth < windowInfo.screenWidth || windowInfo.outerHeight < windowInfo.screenHeight, `Desktop window should not open fullscreen: ${JSON.stringify(windowInfo)}`);
     const mode = await waitFor(() => evaluate(runtime, () => {
       if (!document.body.innerText.trim()) throw new Error("Renderer body not ready.");
       return {
@@ -124,6 +133,25 @@ async function runImportSmoke() {
     assert(!imported.hasWebFallbackInput, "Browser folder input exists after packaged desktop import.");
     assert(imported.hasProjectProfile, "Packaged desktop import did not open the Project Profile layout.");
     assert(!imported.hasOldImportedOverview, "Packaged desktop import returned to the old import result/setup layout.");
+
+    await evaluate(runtime, () => {
+      const button = document.querySelector("button[title='Toggle assistant panel']");
+      if (!button) throw new Error("Assistant panel toggle not ready.");
+      button.click();
+      return true;
+    });
+    const assistantPanel = await waitFor(async () => {
+      const state = await evaluate(runtime, () => ({
+        hasPanel: Boolean(document.querySelector(".assistant-panel")),
+        hasCompactBar: Boolean(document.querySelector(".assistant-bar")),
+        gridIsOpen: document.querySelector(".app-shell")?.classList.contains("assistant-panel-open") ?? false,
+      }));
+      if (!state.hasPanel) throw new Error(`Assistant panel not visible yet. State: ${JSON.stringify(state)}`);
+      return state;
+    });
+    assert(assistantPanel.hasPanel, "Assistant right panel did not open from the desktop shell.");
+    assert(assistantPanel.hasCompactBar, "Assistant bottom input bar disappeared after opening the panel.");
+    assert(assistantPanel.gridIsOpen, "Assistant panel did not reserve layout space.");
   } finally {
     runtime?.close();
     await stopDesktopApp(app);

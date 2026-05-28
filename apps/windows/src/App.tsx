@@ -2,9 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   CircleDot,
+  Copy,
+  ExternalLink,
   FolderOpen,
   FolderPlus,
+  Loader2,
   MessageSquareText,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   RotateCcw,
   Search,
@@ -70,6 +75,17 @@ type ImportState =
   | { status: "cancelled" | "failed"; message: string };
 
 type ViewMode = "today" | "project" | "repo";
+type AssistantDisplayMode = "collapsed" | "right_panel" | "popout_window" | "compact_result";
+
+interface AssistantResponse {
+  text: string;
+  source: "system" | "assistant";
+}
+
+const initialAssistantResponse: AssistantResponse = {
+  text: "Import a folder or create a project to start your command center.",
+  source: "system",
+};
 
 export function App() {
   const [state, setState] = usePersistentState();
@@ -81,7 +97,10 @@ export function App() {
   const [sessionNextStep, setSessionNextStep] = useState("");
   const [blockerTitle, setBlockerTitle] = useState("");
   const [assistantInput, setAssistantInput] = useState("");
-  const [assistantOutput, setAssistantOutput] = useState("Import a folder or create a project to start your command center.");
+  const [assistantResponse, setAssistantResponse] = useState<AssistantResponse>(initialAssistantResponse);
+  const [assistantDisplayMode, setAssistantDisplayMode] = useState<AssistantDisplayMode>("compact_result");
+  const [assistantRunning, setAssistantRunning] = useState(false);
+  const [assistantDetailsOpen, setAssistantDetailsOpen] = useState(false);
   const [fileCategory, setFileCategory] = useState<AttachmentCategory>("docs");
   const [importState, setImportState] = useState<ImportState>({ status: "idle" });
   const assistantInputRef = useRef<HTMLInputElement>(null);
@@ -98,7 +117,8 @@ export function App() {
   const timeline = activeProject ? projectTimeline(state, activeProject.id) : [];
   const attachments = activeProject ? state.attachments.filter((attachment) => attachment.projectId === activeProject.id) : [];
   const approvals = state.approvals.filter((approval) => approval.status === "pending");
-  const showProjectProfileCommandBar = Boolean(activeProject && viewMode === "project");
+  const assistantPanelVisible = assistantDisplayMode === "right_panel" || assistantDisplayMode === "popout_window";
+  const compactAssistantVisible = assistantDisplayMode === "compact_result" && assistantResponse.text.trim().length > 0;
 
   useEffect(() => {
     if (!activeProjectId && state.projects[0]) setActiveProjectId(state.projects[0].id);
@@ -114,6 +134,63 @@ export function App() {
     return "Needs resume";
   }, [activeProject, analysis, blockers, resume]);
 
+  useEffect(() => {
+    function collapseAssistantOnNarrowWindow() {
+      if (window.innerWidth < 1180) {
+        setAssistantDisplayMode((mode) => (mode === "right_panel" || mode === "popout_window" ? "compact_result" : mode));
+      }
+    }
+
+    collapseAssistantOnNarrowWindow();
+    window.addEventListener("resize", collapseAssistantOnNarrowWindow);
+    return () => window.removeEventListener("resize", collapseAssistantOnNarrowWindow);
+  }, []);
+
+  function publishAssistantResponse(text: string, source: AssistantResponse["source"] = "assistant") {
+    const response = { text, source };
+    setAssistantResponse(response);
+    setAssistantDetailsOpen(false);
+    setAssistantDisplayMode(shouldUseAssistantPanel(text) ? "right_panel" : "compact_result");
+  }
+
+  function handleToggleAssistantPanel() {
+    setAssistantDisplayMode((current) => (current === "right_panel" || current === "popout_window" ? "collapsed" : "right_panel"));
+  }
+
+  async function handleCopyAssistantResponse() {
+    try {
+      await navigator.clipboard.writeText(assistantResponse.text);
+    } catch {
+      publishAssistantResponse("Could not copy the assistant response.", "system");
+    }
+  }
+
+  function handleCreateAssistantDraft() {
+    publishAssistantResponse("Session draft created from the latest assistant response. Review it before saving to project memory.", "system");
+  }
+
+  function handlePopOutAssistant() {
+    const popout = window.open("", "pcc-assistant-popout", "width=440,height=720");
+    if (!popout) {
+      publishAssistantResponse("Pop-out is not available in this desktop shell yet. I kept the assistant in the right panel.", "system");
+      setAssistantDisplayMode("right_panel");
+      return;
+    }
+
+    popout.document.title = "PCC Assistant";
+    popout.document.body.style.margin = "0";
+    popout.document.body.style.background = "#121214";
+    popout.document.body.style.color = "#f4f4f5";
+    popout.document.body.style.fontFamily = "Inter, system-ui, sans-serif";
+    const pre = popout.document.createElement("pre");
+    pre.textContent = assistantResponse.text;
+    pre.style.whiteSpace = "pre-wrap";
+    pre.style.lineHeight = "1.55";
+    pre.style.padding = "20px";
+    popout.document.body.appendChild(pre);
+    setAssistantDisplayMode("popout_window");
+  }
+
   function handleCreateProject() {
     const name = projectName.trim() || "Untitled project";
     const nextState = createProject(state, {
@@ -127,7 +204,7 @@ export function App() {
     setViewMode("project");
     setProjectName("");
     setProjectDescription("");
-    setAssistantOutput(`Project added: ${getProjectDisplayName(nextState.projects[0])}.`);
+    publishAssistantResponse(`Project added: ${getProjectDisplayName(nextState.projects[0])}.`, "system");
   }
 
   function handleCreateEmptyProject() {
@@ -142,7 +219,7 @@ export function App() {
     setViewMode("project");
     setProjectName("");
     setProjectDescription("");
-    setAssistantOutput("Project added. Define the first next action when you are ready.");
+    publishAssistantResponse("Project added. Define the first next action when you are ready.", "system");
   }
 
   async function handleImportFolder() {
@@ -162,7 +239,7 @@ export function App() {
 
       const message = `${WEB_DEMO_FALLBACK_LABEL}. Use this only for local development or demo import.`;
       setImportState({ status: "picking_folder", message });
-      setAssistantOutput(`${message} The production desktop app uses a native folder picker and does not trigger browser upload prompts.`);
+      publishAssistantResponse(`${message} The production desktop app uses a native folder picker and does not trigger browser upload prompts.`, "system");
       if (!folderInputRef.current) {
         setImportState({ status: "failed", message: "Web demo folder input is not available in this runtime." });
         return;
@@ -186,7 +263,7 @@ export function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Folder import failed.";
       setImportState({ status: "failed", message });
-      setAssistantOutput(message);
+      publishAssistantResponse(message, "system");
     } finally {
       event.target.value = "";
     }
@@ -214,7 +291,7 @@ export function App() {
     const importedProject = result.state.projects.find((project) => project.id === result.projectId);
     const displayName = importedProject ? getProjectDisplayName(importedProject, getLatestAnalysisSnapshot(result.state, result.projectId)) : draft.projectName;
     const message = result.duplicate ? `Opened existing project: ${displayName}.` : `Project added: ${displayName}. Safe scan complete.`;
-    setAssistantOutput(result.duplicate ? message : getImportSuccessMessage(source));
+    publishAssistantResponse(result.duplicate ? message : getImportSuccessMessage(source), "system");
     setImportState({ status: "completed", message });
     return result;
   }
@@ -228,7 +305,7 @@ export function App() {
         status: "failed",
         message,
       });
-      setAssistantOutput(message);
+      publishAssistantResponse(message, "system");
       return;
     }
 
@@ -243,7 +320,7 @@ export function App() {
     const draft = buildLocalFolderImportDraft(displayPath, scan);
     setState(rescanLocalFolderProject(state, activeProject.id, draft));
     setImportState({ status: "completed", message: "New immutable analysis snapshot created." });
-    setAssistantOutput("Rescan complete. The project analysis snapshot was updated without changing user-authored notes.");
+    publishAssistantResponse("Rescan complete. The project analysis snapshot was updated without changing user-authored notes.", "system");
   }
 
   function handleEndSession() {
@@ -257,7 +334,7 @@ export function App() {
     setState(nextState);
     setSessionSummary("");
     setSessionNextStep("");
-    setAssistantOutput("Session saved and resume snapshot updated.");
+    publishAssistantResponse("Session saved and resume snapshot updated.", "system");
   }
 
   function handleCreateBlocker() {
@@ -271,32 +348,40 @@ export function App() {
       }),
     );
     setBlockerTitle("");
-    setAssistantOutput("Blocker created and project marked blocked.");
+    publishAssistantResponse("Blocker created and project marked blocked.", "system");
   }
 
-  function handleAssistantSubmit() {
+  async function handleAssistantSubmit() {
     if (!assistantInput.trim()) {
-      setAssistantOutput(activeProject ? "Type a command, or use a quick action for this project." : "Import a folder or create a project first, then ask the assistant for help.");
+      publishAssistantResponse(activeProject ? "Type a command, or use a quick action for this project." : "Import a folder or create a project first, then ask the assistant for help.", "system");
       assistantInputRef.current?.focus();
       return;
     }
-    const response = runAssistantCommand(
-      state,
-      {
-        activeWorkspaceId: state.workspace.id,
-        activeProjectId: activeProject?.id,
-        currentScreen: viewMode === "today" ? "dashboard" : viewMode,
-        userPermissions: ["workspace.read", "project.read", "project.write"],
-      },
-      assistantInput,
-    );
-    if (response.state) setState(response.state);
-    if (response.targetProjectId) {
-      setActiveProjectId(response.targetProjectId);
-      setViewMode("project");
+    try {
+      setAssistantRunning(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const response = runAssistantCommand(
+        state,
+        {
+          activeWorkspaceId: state.workspace.id,
+          activeProjectId: activeProject?.id,
+          currentScreen: viewMode === "today" ? "dashboard" : viewMode,
+          userPermissions: ["workspace.read", "project.read", "project.write"],
+        },
+        assistantInput,
+      );
+      if (response.state) setState(response.state);
+      if (response.targetProjectId) {
+        setActiveProjectId(response.targetProjectId);
+        setViewMode("project");
+      }
+      publishAssistantResponse(formatAssistantResponse(response.text));
+      setAssistantInput("");
+    } catch (error) {
+      publishAssistantResponse(error instanceof Error ? error.message : "Assistant command failed.", "system");
+    } finally {
+      setAssistantRunning(false);
     }
-    setAssistantOutput(response.text);
-    setAssistantInput("");
   }
 
   function handleCreateResumeFromAnalysis() {
@@ -309,7 +394,7 @@ export function App() {
       confidence: analysis.summary.confidence,
     });
     setState(nextState);
-    setAssistantOutput("I drafted a resume snapshot. Review it before saving to project memory.");
+    publishAssistantResponse("I drafted a resume snapshot. Review it before saving to project memory.", "assistant");
   }
 
   function handleAssistantQuickAction(action: string) {
@@ -319,21 +404,21 @@ export function App() {
       return;
     }
     if ((action === "Summarize project" || action === "Review project summary") && analysis) {
-      setAssistantOutput(friendlyProjectSummary(analysis));
+      publishAssistantResponse(friendlyProjectSummary(analysis), "assistant");
       return;
     }
     if (action === "Find next step") {
-      setAssistantOutput(`Recommended next step: ${analysis?.recommendedNextStep ?? activeProject.nextExactStep ?? "Review the project summary."}`);
+      publishAssistantResponse(`Recommended next step: ${analysis?.recommendedNextStep ?? activeProject.nextExactStep ?? "Review the project summary."}`, "assistant");
       return;
     }
     if (action === "Generate Codex handoff" && analysis) {
-      setAssistantOutput(
+      publishAssistantResponse(
         `Codex handoff draft: ${getProjectDisplayName(activeProject, analysis)}. Status: ${analysis.summary.statusSummary}. Next: ${analysis.recommendedNextStep ?? activeProject.nextExactStep ?? "Review analysis"}.`,
       );
       return;
     }
     if (action === "Generate Codex handoff") {
-      setAssistantOutput("No analysis snapshot is available for a Codex handoff yet. Import or rescan a folder first.");
+      publishAssistantResponse("No analysis snapshot is available for a Codex handoff yet. Import or rescan a folder first.", "assistant");
     }
   }
 
@@ -354,11 +439,11 @@ export function App() {
       });
     }
     setState(nextState);
-    setAssistantOutput(`${files.length} file${files.length === 1 ? "" : "s"} added to ${getProjectDisplayName(activeProject, analysis)}.`);
+    publishAssistantResponse(`${files.length} file${files.length === 1 ? "" : "s"} added to ${getProjectDisplayName(activeProject, analysis)}.`, "system");
   }
 
   return (
-    <main className="app-shell" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>
+    <main className={assistantPanelVisible ? "app-shell assistant-panel-open" : "app-shell"} onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>
       {folderImportMode === "web_demo" && (
         <input
           ref={folderInputRef}
@@ -457,11 +542,14 @@ export function App() {
               type="button"
               title="Search"
               onClick={() => {
-                setAssistantOutput("Search is handled through the command bar. Type what you want to find or ask.");
+                publishAssistantResponse("Search is handled through the command bar. Type what you want to find or ask.", "system");
                 assistantInputRef.current?.focus();
               }}
             >
               <Search size={16} />
+            </button>
+            <button type="button" title="Toggle assistant panel" onClick={handleToggleAssistantPanel} aria-expanded={assistantPanelVisible}>
+              {assistantPanelVisible ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
             </button>
             {viewMode !== "today" && activeProject?.status === "archived" ? (
               <button type="button" onClick={() => setState(restoreProject(state, activeProject.id))} title="Restore project">
@@ -518,7 +606,7 @@ export function App() {
             onRescan={handleRescanActiveProject}
             onCreateResumeFromAnalysis={handleCreateResumeFromAnalysis}
             onAssistantQuickAction={handleAssistantQuickAction}
-            onProfileCommand={(command) => setAssistantOutput(`Project command noted: ${command}. V1 profile commands are non-destructive and approval-gated before execution.`)}
+            onProfileCommand={(command) => publishAssistantResponse(`Project command noted: ${command}. V1 profile commands are non-destructive and approval-gated before execution.`, "assistant")}
             onApprove={(approvalId) => setState(applyApproval(state, approvalId))}
             onReject={(approvalId) => setState(rejectApproval(state, approvalId))}
           />
@@ -527,10 +615,33 @@ export function App() {
         )}
       </section>
 
-      {!showProjectProfileCommandBar && <footer className="assistant-bar">
+      {assistantPanelVisible && (
+        <AssistantPanel
+          response={assistantResponse}
+          mode={assistantDisplayMode}
+          detailsOpen={assistantDetailsOpen}
+          onDetailsToggle={() => setAssistantDetailsOpen((open) => !open)}
+          onCopy={handleCopyAssistantResponse}
+          onCreateDraft={handleCreateAssistantDraft}
+          onCollapse={() => setAssistantDisplayMode("compact_result")}
+          onPopOut={handlePopOutAssistant}
+        />
+      )}
+
+      <footer className="assistant-bar">
+        {compactAssistantVisible && (
+          <div className="assistant-compact-result" role="status">
+            <MessageSquareText size={16} />
+            <span>{toCompactAssistantText(assistantResponse.text)}</span>
+            <button type="button" onClick={() => setAssistantDisplayMode("right_panel")}>
+              Open
+            </button>
+          </div>
+        )}
         <div className="assistant-status">
           <MessageSquareText size={18} />
-          <span>{assistantOutput}</span>
+          <span>{assistantRunning ? "Assistant is thinking..." : assistantPanelVisible ? "Assistant panel open" : "Ask PCC from the command bar."}</span>
+          {assistantRunning && <Loader2 className="assistant-spinner" size={16} aria-hidden="true" />}
         </div>
         {getAssistantQuickActions(activeProject).length > 0 && (
           <div className="assistant-chips" aria-label="Assistant quick actions">
@@ -547,7 +658,7 @@ export function App() {
             value={assistantInput}
             onChange={(event) => setAssistantInput(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter") handleAssistantSubmit();
+              if (event.key === "Enter") void handleAssistantSubmit();
             }}
             placeholder={
               activeProject?.origin === "local_folder_import"
@@ -558,11 +669,11 @@ export function App() {
             }
             aria-label="Assistant command"
           />
-          <button type="button" className={assistantInput.trim() ? "assistant-submit ready" : "assistant-submit"} onClick={handleAssistantSubmit}>
-            <SquarePen size={16} /> Run
+          <button type="button" className={assistantInput.trim() ? "assistant-submit ready" : "assistant-submit"} onClick={() => void handleAssistantSubmit()} disabled={assistantRunning}>
+            {assistantRunning ? <Loader2 className="assistant-spinner" size={16} /> : <SquarePen size={16} />} {assistantRunning ? "Running" : "Run"}
           </button>
         </div>
-      </footer>}
+      </footer>
     </main>
   );
 }
@@ -592,6 +703,77 @@ interface ProjectSurfaceProps {
   onProfileCommand: (command: string) => void;
   onApprove: (approvalId: string) => void;
   onReject: (approvalId: string) => void;
+}
+
+function AssistantPanel({
+  response,
+  mode,
+  detailsOpen,
+  onDetailsToggle,
+  onCopy,
+  onCreateDraft,
+  onCollapse,
+  onPopOut,
+}: {
+  response: AssistantResponse;
+  mode: AssistantDisplayMode;
+  detailsOpen: boolean;
+  onDetailsToggle: () => void;
+  onCopy: () => void;
+  onCreateDraft: () => void;
+  onCollapse: () => void;
+  onPopOut: () => void;
+}) {
+  const steps = toAssistantSteps(response.text);
+  const technicalDetails = getAssistantTechnicalDetails(response.text);
+
+  return (
+    <aside className="assistant-panel" aria-label="Assistant response panel">
+      <header className="assistant-panel-header">
+        <div>
+          <span className="eyebrow">{mode === "popout_window" ? "Assistant pop-out" : "Assistant"}</span>
+          <h2>Response</h2>
+        </div>
+        <button type="button" title="Collapse assistant" onClick={onCollapse}>
+          <PanelRightClose size={16} /> Collapse
+        </button>
+      </header>
+
+      <section className="assistant-response-card">
+        {steps.length > 1 ? (
+          <ol className="assistant-step-list">
+            {steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        ) : (
+          <p>{response.text}</p>
+        )}
+      </section>
+
+      <div className="assistant-panel-actions" aria-label="Assistant response actions">
+        <button type="button" onClick={onCopy}>
+          <Copy size={15} /> Copy
+        </button>
+        <button type="button" onClick={onCreateDraft}>
+          <SquarePen size={15} /> Create task/session draft
+        </button>
+        <button type="button" onClick={onDetailsToggle}>
+          {detailsOpen ? "Hide details" : "Show details"}
+        </button>
+        <button type="button" onClick={onPopOut}>
+          <ExternalLink size={15} /> Pop out
+        </button>
+      </div>
+
+      {detailsOpen && (
+        <details className="assistant-details" open>
+          <summary>Technical details</summary>
+          <p>{technicalDetails}</p>
+        </details>
+      )}
+    </aside>
+  );
 }
 
 function TodayView({
@@ -1280,6 +1462,41 @@ function getImportSuccessMessage(source: "desktop" | "web_demo"): string {
   }
 
   return `${WEB_DEMO_FALLBACK_LABEL}. Project added from a one-time browser file selection. The demo fallback does not retain folder access.`;
+}
+
+export function shouldUseAssistantPanel(text: string): boolean {
+  const normalized = text.trim();
+  return normalized.length > 180 || normalized.split(/\r?\n/).length > 2 || /handoff|summary|step|next|draft/i.test(normalized);
+}
+
+export function toCompactAssistantText(text: string): string {
+  const firstLine = text.trim().split(/\r?\n/).find(Boolean) ?? "";
+  return firstLine.length > 150 ? `${firstLine.slice(0, 147)}...` : firstLine;
+}
+
+export function formatAssistantResponse(text: string): string {
+  const normalized = text.trim();
+  if (!normalized) return "No assistant response.";
+  if (normalized.includes("\n")) return normalized;
+  if (!/next|step|todo|handoff|plan/i.test(normalized)) return normalized;
+  return normalized
+    .split(/(?<=\.)\s+(?=[A-Z])/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function toAssistantSteps(text: string): string[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").trim())
+    .filter(Boolean);
+  return lines.length > 1 ? lines : [];
+}
+
+function getAssistantTechnicalDetails(text: string): string {
+  const lines = text.split(/\r?\n/).filter(Boolean).length;
+  return `Response length: ${text.length} characters. Lines: ${lines}. Assistant actions remain non-destructive unless an approval flow is explicitly used.`;
 }
 
 async function collectBrowserFileEntries(files: FileList, rootName: string): Promise<ScannableEntry[]> {

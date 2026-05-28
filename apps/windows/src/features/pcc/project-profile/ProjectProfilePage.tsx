@@ -79,7 +79,6 @@ export function ProjectProfilePage({
           <NextActionRail profile={profile} onContinue={onContinue} />
         </aside>
       </div>
-      <AICommandBar onCommand={onCommand} />
     </section>
   );
 }

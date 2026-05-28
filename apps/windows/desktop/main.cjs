@@ -16,9 +16,10 @@ let mainWindow;
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
-    height: 940,
-    minWidth: 1100,
-    minHeight: 720,
+    height: 900,
+    minWidth: 1180,
+    minHeight: 760,
+    center: true,
     title: "Project Command Center",
     backgroundColor: "#121214",
     show: false,

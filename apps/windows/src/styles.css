@@ -29,6 +29,8 @@
 
   --shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.28);
   --sidebar-width: 260px;
+  --assistant-panel-width: 400px;
+  --assistant-bar-height: 118px;
 
   --pcc-bg-base: #121214;
   --pcc-bg-sidebar: #18181b;
@@ -213,6 +215,10 @@ p {
   min-height: 100vh;
 }
 
+.app-shell.assistant-panel-open {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) minmax(360px, var(--assistant-panel-width));
+}
+
 .hidden-folder-input {
   display: none;
 }
@@ -366,7 +372,7 @@ p {
 .workspace {
   background: var(--bg-main);
   min-width: 0;
-  padding-bottom: 132px;
+  padding-bottom: var(--assistant-bar-height);
 }
 
 .topbar {
@@ -683,17 +689,47 @@ p {
 }
 
 .assistant-bar {
-  background: var(--surface-1);
+  background: rgba(17, 21, 29, 0.94);
+  backdrop-filter: blur(16px);
   border-top: 1px solid var(--border-clear);
   bottom: 0;
   box-shadow: 0 -18px 48px rgba(0, 0, 0, 0.32);
   display: grid;
-  gap: 10px;
+  gap: 8px;
   left: var(--sidebar-width);
-  padding: 14px 32px 18px;
+  min-height: var(--assistant-bar-height);
+  padding: 12px 32px 16px;
   position: fixed;
   right: 0;
   z-index: 10;
+}
+
+.assistant-panel-open .assistant-bar {
+  right: var(--assistant-panel-width);
+}
+
+.assistant-compact-result {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 34px;
+  padding: 6px 8px 6px 10px;
+}
+
+.assistant-compact-result span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-compact-result button {
+  min-height: 26px;
+  padding: 4px 9px;
 }
 
 .assistant-status {
@@ -732,6 +768,15 @@ p {
   font-weight: 750;
 }
 
+.assistant-submit:disabled {
+  cursor: wait;
+  opacity: 0.8;
+}
+
+.assistant-spinner {
+  animation: assistant-spin 900ms linear infinite;
+}
+
 .assistant-chips {
   display: flex;
   flex-wrap: wrap;
@@ -744,6 +789,100 @@ p {
   color: var(--text-muted);
   min-height: 31px;
   padding: 6px 10px;
+}
+
+.assistant-panel {
+  align-content: start;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(159, 245, 220, 0.08), transparent 40%),
+    #0b0f16;
+  border-left: 1px solid var(--border-clear);
+  color: var(--text-main);
+  display: grid;
+  gap: 14px;
+  grid-column: 3;
+  min-height: 100vh;
+  overflow: auto;
+  padding: 22px 18px calc(var(--assistant-bar-height) + 18px);
+}
+
+.assistant-panel-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.assistant-panel-header h2 {
+  font-size: 22px;
+}
+
+.assistant-panel-header button {
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+.assistant-response-card {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 16px;
+}
+
+.assistant-response-card p {
+  color: var(--text-main);
+}
+
+.assistant-step-list {
+  color: var(--text-main);
+  display: grid;
+  gap: 12px;
+  line-height: 1.55;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.assistant-step-list li::marker {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.assistant-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.assistant-panel-actions button {
+  color: var(--text-muted);
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.assistant-details {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  padding: 12px;
+}
+
+.assistant-details summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.assistant-details p {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+@keyframes assistant-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .empty-state {
@@ -1634,7 +1773,8 @@ p {
     --sidebar-width: 0px;
   }
 
-  .app-shell {
+  .app-shell,
+  .app-shell.assistant-panel-open {
     grid-template-columns: 1fr;
   }
 
@@ -1646,6 +1786,11 @@ p {
 
   .assistant-bar {
     left: 0;
+    right: 0;
+  }
+
+  .assistant-panel {
+    display: none;
   }
 
   .pcc-ai-command-bar {

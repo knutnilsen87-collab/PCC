@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { ProjectSurface } from "./App";
+import { ProjectSurface, formatAssistantResponse, shouldUseAssistantPanel, toCompactAssistantText } from "./App";
 import type { Project, ProjectAnalysisSnapshot } from "@pcc/schemas";
 
 const importedProject: Project = {
@@ -95,8 +95,24 @@ describe("ProjectSurface", () => {
     expect(markup).toContain("ProPokerTV_Main");
     expect(markup).toContain("Current Focus");
     expect(markup).toContain("Next Action");
-    expect(markup).toContain("Ask PCC about this project");
     expect(markup).not.toContain("Project imported:");
     expect(markup).not.toContain("Setup progress");
+  });
+});
+
+describe("assistant presentation helpers", () => {
+  it("routes long assistant responses to the right panel", () => {
+    expect(shouldUseAssistantPanel("Short answer.")).toBe(false);
+    expect(shouldUseAssistantPanel("Step 1. Review the project summary. Step 2. Create a resume snapshot. Step 3. Run the smoke test.")).toBe(true);
+  });
+
+  it("keeps compact results short", () => {
+    const compact = toCompactAssistantText("A".repeat(200));
+    expect(compact.length).toBeLessThanOrEqual(150);
+    expect(compact.endsWith("...")).toBe(true);
+  });
+
+  it("formats assistant instructions as simple lines", () => {
+    expect(formatAssistantResponse("Next step. Run the focused smoke test. Save the session.")).toContain("\n");
   });
 });
