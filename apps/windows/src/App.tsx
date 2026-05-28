@@ -98,7 +98,7 @@ export function App() {
   const timeline = activeProject ? projectTimeline(state, activeProject.id) : [];
   const attachments = activeProject ? state.attachments.filter((attachment) => attachment.projectId === activeProject.id) : [];
   const approvals = state.approvals.filter((approval) => approval.status === "pending");
-  const showProjectProfileCommandBar = Boolean(activeProject && viewMode === "project" && !(analysis && activeProject.origin === "local_folder_import"));
+  const showProjectProfileCommandBar = Boolean(activeProject && viewMode === "project");
 
   useEffect(() => {
     if (!activeProjectId && state.projects[0]) setActiveProjectId(state.projects[0].id);
@@ -503,7 +503,6 @@ export function App() {
             attachments={attachments}
             analysis={analysis}
             timeline={timeline}
-            importState={importState}
             sessionSummary={sessionSummary}
             sessionNextStep={sessionNextStep}
             blockerTitle={blockerTitle}
@@ -575,7 +574,6 @@ interface ProjectSurfaceProps {
   attachments: AppState["attachments"];
   analysis: ProjectAnalysisSnapshot | undefined;
   timeline: AppState["timelineEvents"];
-  importState: ImportState;
   sessionSummary: string;
   sessionNextStep: string;
   blockerTitle: string;
@@ -816,22 +814,7 @@ function RepoView({
   );
 }
 
-function ProjectSurface(props: ProjectSurfaceProps) {
-  if (props.analysis && props.project.origin === "local_folder_import") {
-    return (
-      <ImportedProjectOverview
-        project={props.project}
-        analysis={props.analysis}
-        resume={props.resume}
-        blockers={props.blockers}
-        importState={props.importState}
-        onCreateResumeFromAnalysis={props.onCreateResumeFromAnalysis}
-        onRescan={props.onRescan}
-        onAssistantQuickAction={props.onAssistantQuickAction}
-      />
-    );
-  }
-
+export function ProjectSurface(props: ProjectSurfaceProps) {
   return (
     <ProjectProfilePage
       profile={buildProjectProfileFromProject(props)}

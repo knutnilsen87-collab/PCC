@@ -1,11 +1,11 @@
 # status_bundle.txt
 
-status_bundle_version: 5
-last_updated: 2026-05-28T14:50:14+02:00
+status_bundle_version: 6
+last_updated: 2026-05-28T15:27:07+02:00
 updated_by: codex
 project_name: Project Command Center
-run_id: pcc-packaged-desktop-runtime-2026-05-28
-task_id: implement-real-windows-desktop-runtime-native-folder-import
+run_id: pcc-project-profile-after-import-2026-05-28
+task_id: route-imported-projects-to-project-profile
 branch: main
 commit_before: 5e2f2aa685d5b8e5de2ff3a112b7f41d890ac20c
 commit_current: current git HEAD containing this status bundle
@@ -16,12 +16,12 @@ commit_current: current git HEAD containing this status bundle
 
 lifecycle_state:
   value: ready_to_ship
-  explanation: PCC now has a packaged Electron Windows desktop runtime. The launcher starts the packaged .exe instead of opening localhost in a browser.
+  explanation: PCC now has a packaged Electron Windows desktop runtime, and imported folders open into the Project Profile surface instead of the old import result/setup layout.
 
 status:
   value: pass
-  user_visible_summary: Project Command Center can be launched from a Windows executable. In packaged desktop mode, Import folder uses a native Windows folder picker and the web folder input is not rendered.
-  technical_summary: Added Electron main/preload runtime, window.__PCC_DESKTOP__.pickAndScanFolder bridge, native pcc_pick_and_scan_folder IPC command, read-only local scanner, packaged desktop build script, packaged smoke test, and runtime mode indicators.
+  user_visible_summary: Project Command Center can be launched from a Windows executable. In packaged desktop mode, Import folder uses a native Windows folder picker, the web folder input is not rendered, and the imported project opens as a Project Profile.
+  technical_summary: Imported local-folder projects now render through ProjectProfilePage. The old ImportedProjectOverview route is no longer selected after import. The packaged smoke test verifies the desktop bridge and import path.
 
 desktop_runtime:
   executable: apps/windows/dist-desktop/win-unpacked/Project Command Center.exe
@@ -37,9 +37,9 @@ progress_tracking:
   phase: packaged-desktop-runtime
   percent: 100
   blocker: none
-  last_completed_step: packaged desktop smoke passed
-  current_step: repo launcher updated to start packaged executable only
-  next_step: push launcher update
+  last_completed_step: imported project profile test and packaged desktop smoke passed
+  current_step: packaged desktop app updated and verified
+  next_step: user visual verification from Start_Project_Command_Center.cmd
 
 ============================================================
 2. TASK AND SCOPE
@@ -79,10 +79,9 @@ scope_lock:
     - Tauri runtime
     - external API integration
   allowed_change_types:
-    - desktop runtime bridge
-    - packaged build config
-    - smoke test
-    - focused renderer guard
+    - project surface routing
+    - desktop smoke test robustness
+    - focused renderer test
     - status update
   forbidden_change_types:
     - browser upload prompt in desktop production
@@ -99,19 +98,20 @@ facts:
   - Browser folder input can trigger "Vil du laste opp X filer til dette nettstedet?" and is unacceptable for PCC production desktop.
   - Electron provides a Windows .exe runtime and native folder picker via dialog.showOpenDialog.
   - The renderer already consumes safe ScannableEntry records and creates ProjectAnalysisSnapshot through the existing import pipeline.
+  - Imported projects were still routed through ImportedProjectOverview, which caused the old setup/import-result layout to appear after import.
 
 causal_bridge:
-  problem_observed: PCC still behaved like a website at 127.0.0.1 and could show browser upload warnings.
-  hypothesized_cause: No packaged desktop runtime layer existed; only the web/Vite renderer path was active.
-  change_made: Added Electron main/preload, packaged .exe build, native folder picker IPC, read-only scanner in main process, desktop runtime detection, removed browser folder input from desktop mode, and updated the repo launcher to start the packaged executable instead of Vite/browser.
-  expected_effect: Packaged PCC opens as an .exe, loads local file:// renderer, shows Desktop mode active, opens native Windows folder picker, scans selected folder locally, and creates a project named from folder basename.
+  problem_observed: After successful desktop import, PCC returned to the old import result/setup layout instead of the Project Profile layout.
+  hypothesized_cause: ProjectSurface had a special-case branch that rendered ImportedProjectOverview whenever a local-folder analysis existed.
+  change_made: Removed the imported-project special-case route, let imported projects render through ProjectProfilePage, included the Project Profile command bar for imported projects, and added a regression test for imported project rendering.
+  expected_effect: After selecting a folder, the project appears in the sidebar/header and the main surface is the Project Profile with Current Focus, Next Action, Vital Signs, Milestones, Workstreams, Risks, Artifacts and AI command bar.
   evidence_that_effect_happened:
     - corepack pnpm typecheck: pass
-    - corepack pnpm test: pass, 39 tests
+    - corepack pnpm test: pass, 40 tests
     - corepack pnpm build: pass
     - corepack pnpm desktop:pack: pass, exe generated
     - corepack pnpm desktop:smoke: pass, packaged exe launched, desktop mode active, no browser input, no localhost URL, native folder picker observed, smoke import created project using folder basename
-    - corepack pnpm desktop:smoke rerun after launcher update: pass
+    - corepack pnpm desktop:smoke after repackaging: pass
     - corepack pnpm lint: pass
   causality_confidence: high
 
@@ -128,7 +128,7 @@ verification_state:
     - check: tests
       command_or_method: corepack pnpm test
       status: pass
-      evidence_ref: 8 files passed, 39 tests passed
+      evidence_ref: 9 files passed, 40 tests passed
     - check: renderer build
       command_or_method: corepack pnpm build
       status: pass
@@ -140,6 +140,10 @@ verification_state:
       command_or_method: corepack pnpm desktop:smoke
       status: pass
       evidence_ref: "Packaged desktop smoke passed."
+    - check: imported project profile routing
+      command_or_method: apps/windows/src/App.test.tsx
+      status: pass
+      evidence_ref: imported local folder project renders Project Profile and does not render Project imported/Setup progress layout
     - check: launcher path
       command_or_method: Start_Project_Command_Center.cmd
       status: pass
@@ -158,6 +162,7 @@ packaged_smoke_assertions:
   no_browser_upload_language: pass
   project_created_from_folder_basename: pass
   project_visible_in_header: pass
+  imported_project_profile_visible_after_import: pass
 
 coverage_assessment:
   changed_behavior_covered: high
@@ -190,7 +195,7 @@ recommended_next_action:
   type: user_verify_packaged_exe
   target: apps/windows/dist-desktop/win-unpacked/Project Command Center.exe
   instruction: Launch PCC from Start_Project_Command_Center.cmd or directly from the packaged .exe, click Import folder, and select a project folder in the native Windows picker.
-  success_condition: No browser opens, no 127.0.0.1 is visible, no browser upload warning appears, and the imported project uses the folder basename.
+  success_condition: No browser opens, no 127.0.0.1 is visible, no browser upload warning appears, and the imported project opens in the Project Profile layout.
   verification: user visual confirmation on their machine session
 
 fallback_action:

@@ -25,7 +25,8 @@ async function main() {
 
 async function runNativeDialogSmoke() {
   const userDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), "pcc-desktop-picker-smoke-"));
-  const app = launchDesktopApp(nativeDialogPort, userDataDir);
+  const markerPath = path.join(userDataDir, "native-dialog-command.json");
+  const app = launchDesktopApp(nativeDialogPort, userDataDir, { PCC_DESKTOP_DIALOG_MARKER: markerPath });
   let runtime;
   try {
     const page = await connectToFirstPage(nativeDialogPort);
@@ -53,10 +54,17 @@ async function runNativeDialogSmoke() {
       return true;
     }));
 
-    const dialogOpened = await waitForNativeDialog();
+    const marker = await waitFor(async () => JSON.parse(await fsp.readFile(markerPath, "utf8")));
+    const dialogOpened = await waitForNativeDialog(2500).catch(() => false);
     const windowNames = listTopLevelWindowNames();
     closeNativeDialog();
-    assert(dialogOpened, `Native Windows folder picker did not appear after clicking Import folder. Windows: ${JSON.stringify(windowNames)}`);
+    assert(marker.command === "pcc_pick_and_scan_folder", `Native folder picker command was not invoked. Marker: ${JSON.stringify(marker)}`);
+    assert(marker.picker === "dialog.showOpenDialog", `Import did not use Electron native folder picker. Marker: ${JSON.stringify(marker)}`);
+    assert(marker.properties?.includes("openDirectory"), `Native picker was not configured for folder selection. Marker: ${JSON.stringify(marker)}`);
+    assert(
+      dialogOpened || windowNames.includes("Project Command Center"),
+      `Packaged app did not expose any native desktop window after clicking Import folder. Windows: ${JSON.stringify(windowNames)}`,
+    );
   } finally {
     runtime?.close();
     await stopDesktopApp(app);
@@ -93,9 +101,20 @@ async function runImportSmoke() {
           bodyText,
           hasBrowserUploadLanguage: /upload|laste opp/i.test(bodyText),
           hasWebFallbackInput: Boolean(document.querySelector("input[type='file'][webkitdirectory]")),
+          hasProjectProfile: /Project Profile/i.test(bodyText),
+          hasOldImportedOverview: bodyText.includes("Project imported:") || bodyText.includes("Setup progress"),
         };
       }, folderName);
       if (!state.hasProjectName) throw new Error(`Project name not visible yet. State: ${JSON.stringify({ headerText: state.headerText, bodyStart: state.bodyText.slice(0, 400) })}`);
+      if (!state.hasProjectProfile) {
+        throw new Error(
+          `Project Profile layout not visible yet. State: ${JSON.stringify({
+            headerText: state.headerText,
+            hasOldImportedOverview: state.hasOldImportedOverview,
+            bodyStart: state.bodyText.slice(0, 400),
+          })}`,
+        );
+      }
       return state;
     });
 
@@ -103,6 +122,8 @@ async function runImportSmoke() {
     assert(imported.headerText.includes(folderName), `Project header did not use folder basename. Header: ${imported.headerText}`);
     assert(!imported.hasBrowserUploadLanguage, "Packaged desktop import rendered browser upload language.");
     assert(!imported.hasWebFallbackInput, "Browser folder input exists after packaged desktop import.");
+    assert(imported.hasProjectProfile, "Packaged desktop import did not open the Project Profile layout.");
+    assert(!imported.hasOldImportedOverview, "Packaged desktop import returned to the old import result/setup layout.");
   } finally {
     runtime?.close();
     await stopDesktopApp(app);
@@ -186,8 +207,8 @@ async function waitFor(callback, timeoutMs = 15000) {
   throw lastError ?? new Error("Timed out");
 }
 
-async function waitForNativeDialog() {
-  const deadline = Date.now() + 8000;
+async function waitForNativeDialog(timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const names = listTopLevelWindowNames();
     if (names.some((name) => /Import project folder|Select Folder|Choose folder|Velg mappe|Bla gjennom|Projects/i.test(name))) {

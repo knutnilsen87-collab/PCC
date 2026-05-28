@@ -56,6 +56,19 @@ function registerNativeCommands() {
       return { folderPath, entries };
     }
 
+    if (process.env.PCC_DESKTOP_DIALOG_MARKER) {
+      await fs.writeFile(
+        process.env.PCC_DESKTOP_DIALOG_MARKER,
+        JSON.stringify({
+          command: "pcc_pick_and_scan_folder",
+          picker: "dialog.showOpenDialog",
+          title: "Import project folder",
+          properties: ["openDirectory"],
+        }),
+        "utf8",
+      );
+    }
+
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "Import project folder",
       properties: ["openDirectory"],
