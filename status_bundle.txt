@@ -1,14 +1,14 @@
 # status_bundle.txt
 
 status_bundle_version: 3
-last_updated: 2026-05-28T09:04:05+02:00
+last_updated: 2026-05-28T09:09:38+02:00
 updated_by: codex
 project_name: Project Command Center
 run_id: pcc-desktop-first-folder-import-2026-05-28
 task_id: desktop-first-local-folder-import-and-folder-name-default
 branch: main
 commit_before: baabfc9432a28cb7954e8129f0b09a83d11a19d7
-commit_current: pending
+commit_current: b2d65da04265563f79b67e003c94361059a3d4b8
 
 ============================================================
 1. CURRENT STATE
@@ -28,8 +28,8 @@ progress_tracking:
   percent: 100
   blocker: none
   last_completed_step: typecheck, tests, and build passed after code patch
-  current_step: commit and push pending
-  next_step: commit and push to GitHub
+  current_step: pushed to GitHub
+  next_step: add the native desktop shell bridge if the production package does not already expose it
 
 ============================================================
 2. TASK AND SCOPE
@@ -172,11 +172,11 @@ repo_health:
 ============================================================
 
 recommended_next_action:
-  type: verify_and_ship
+  type: desktop_runtime_verify
   target: main branch
-  instruction: Run build, inspect diff, commit, and push the desktop-first folder import patch.
-  success_condition: Build passes and GitHub main contains the update.
-  verification: corepack pnpm build and git push
+  instruction: Verify the production desktop shell exposes pcc_pick_and_scan_folder or __PCC_DESKTOP__.pickAndScanFolder.
+  success_condition: Clicking Import folder in the packaged desktop app opens the native OS folder picker and imports without browser upload language.
+  verification: packaged desktop smoke
 
 fallback_action:
   type: desktop_bridge_followup
@@ -189,6 +189,5 @@ closure_readiness:
   remaining_unknowns:
     - actual native shell bridge availability in the production desktop packaging layer
   follow_up_required:
-    - commit
-    - push
+    - packaged desktop smoke
   final_user_summary: Desktop-first import path is implemented in the UI/app layer; browser fallback is demo-labeled; selected folder basename becomes the project name.
