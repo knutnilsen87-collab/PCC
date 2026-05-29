@@ -3,11 +3,11 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 
 const DEFAULT_WINDOW = {
-  width: 1440,
-  height: 900,
+  widthRatio: 0.9,
+  heightRatio: 0.88,
   minWidth: 1180,
   minHeight: 760,
-  margin: 80,
+  margin: 48,
 };
 
 const SCAN_POLICY = {
@@ -35,9 +35,12 @@ if (!hasSingleInstanceLock) {
 function createWindow() {
   const bounds = getComfortableWindowBounds();
   mainWindow = new BrowserWindow({
-    ...bounds,
-    minWidth: DEFAULT_WINDOW.minWidth,
-    minHeight: DEFAULT_WINDOW.minHeight,
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    minWidth: bounds.minWidth,
+    minHeight: bounds.minHeight,
     title: "Project Command Center",
     backgroundColor: "#121214",
     show: false,
@@ -123,20 +126,31 @@ function applyComfortableWindowBounds(window) {
   if (window.isDestroyed()) return;
   if (window.isFullScreen()) window.setFullScreen(false);
   if (window.isMaximized()) window.unmaximize();
-  window.setMinimumSize(DEFAULT_WINDOW.minWidth, DEFAULT_WINDOW.minHeight);
-  window.setBounds(getComfortableWindowBounds(), true);
+  const bounds = getComfortableWindowBounds();
+  window.setMinimumSize(bounds.minWidth, bounds.minHeight);
+  window.setBounds({ x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }, true);
 }
 
 function getComfortableWindowBounds() {
   const { workArea } = screen.getPrimaryDisplay();
-  const width = Math.min(DEFAULT_WINDOW.width, Math.max(DEFAULT_WINDOW.minWidth, workArea.width - DEFAULT_WINDOW.margin));
-  const height = Math.min(DEFAULT_WINDOW.height, Math.max(DEFAULT_WINDOW.minHeight, workArea.height - DEFAULT_WINDOW.margin));
+  const maxWidth = Math.max(640, workArea.width - DEFAULT_WINDOW.margin);
+  const maxHeight = Math.max(520, workArea.height - DEFAULT_WINDOW.margin);
+  const minWidth = Math.min(DEFAULT_WINDOW.minWidth, maxWidth);
+  const minHeight = Math.min(DEFAULT_WINDOW.minHeight, maxHeight);
+  const width = clamp(Math.round(workArea.width * DEFAULT_WINDOW.widthRatio), minWidth, maxWidth);
+  const height = clamp(Math.round(workArea.height * DEFAULT_WINDOW.heightRatio), minHeight, maxHeight);
   return {
     width,
     height,
+    minWidth,
+    minHeight,
     x: Math.round(workArea.x + (workArea.width - width) / 2),
     y: Math.round(workArea.y + (workArea.height - height) / 2),
   };
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 async function scanFolderReadOnly(rootPath) {

@@ -37,8 +37,10 @@ async function runNativeDialogSmoke() {
       screenWidth: window.screen.width,
       screenHeight: window.screen.height,
     })));
-    assert(windowInfo.outerWidth >= 1400, `Desktop window opened too narrow: ${JSON.stringify(windowInfo)}`);
-    assert(windowInfo.outerHeight >= 860, `Desktop window opened too short: ${JSON.stringify(windowInfo)}`);
+    const expectedWidth = Math.min(windowInfo.screenWidth - 48, Math.max(1180, Math.round(windowInfo.screenWidth * 0.86)));
+    const expectedHeight = Math.min(windowInfo.screenHeight - 48, Math.max(760, Math.round(windowInfo.screenHeight * 0.82)));
+    assert(windowInfo.outerWidth >= expectedWidth, `Desktop window opened too narrow: ${JSON.stringify({ windowInfo, expectedWidth })}`);
+    assert(windowInfo.outerHeight >= expectedHeight, `Desktop window opened too short: ${JSON.stringify({ windowInfo, expectedHeight })}`);
     assert(windowInfo.outerWidth < windowInfo.screenWidth || windowInfo.outerHeight < windowInfo.screenHeight, `Desktop window should not open fullscreen: ${JSON.stringify(windowInfo)}`);
     const mode = await waitFor(() => evaluate(runtime, () => {
       if (!document.body.innerText.trim()) throw new Error("Renderer body not ready.");

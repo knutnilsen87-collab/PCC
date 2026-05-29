@@ -1,11 +1,11 @@
 # status_bundle.txt
 
-status_bundle_version: 8
-last_updated: 2026-05-28T23:42:39+02:00
+status_bundle_version: 9
+last_updated: 2026-05-29T10:16:56+02:00
 updated_by: codex
 project_name: Project Command Center
-run_id: pcc-enforced-desktop-window-bounds-2026-05-28
-task_id: enforce-desktop-window-size-on-launch-and-second-instance
+run_id: pcc-ultrawide-desktop-window-bounds-2026-05-29
+task_id: size-desktop-window-by-work-area-ratio
 branch: main
 commit_before: 5e2f2aa685d5b8e5de2ff3a112b7f41d890ac20c
 commit_current: current git HEAD containing this status bundle
@@ -16,17 +16,17 @@ commit_current: current git HEAD containing this status bundle
 
 lifecycle_state:
   value: ready_to_ship
-  explanation: PCC now has a packaged Electron Windows desktop runtime, imported folders open into the Project Profile surface, assistant responses use a compact bottom input plus optional right-side response panel, and desktop window bounds are enforced on launch.
+  explanation: PCC now has a packaged Electron Windows desktop runtime, imported folders open into the Project Profile surface, assistant responses use a compact bottom input plus optional right-side response panel, and desktop window bounds scale to the actual work area.
 
 status:
   value: pass
-  user_visible_summary: Project Command Center opens as a large desktop workspace. If a previous small instance is already running, a second launch focuses and resizes it to the comfortable desktop bounds.
-  technical_summary: Electron now computes comfortable bounds from the primary display work area, applies them before show, enforces minimum size, disables fullscreen/maximized launch state, and handles second-instance focus/resize.
+  user_visible_summary: Project Command Center opens as a large desktop workspace sized to roughly 90% of the available width and 88% of the available height, centered and not fullscreen.
+  technical_summary: Removed the fixed 1440x900 cap. Electron now computes bounds from primary display work area ratios, applies them before show, enforces minimum size, disables fullscreen/maximized launch state, and handles second-instance focus/resize.
 
 desktop_runtime:
   executable: apps/windows/dist-desktop/win-unpacked/Project Command Center.exe
   launcher: Start_Project_Command_Center.cmd -> start-project-command-center.ps1 -> packaged executable
-  default_window_size: 1440x900
+  default_window_size: 90_percent_width_by_88_percent_height_of_work_area
   minimum_window_size: 1180x760
   fullscreen_default: false
   bounds_enforced_on_ready_to_show: true
@@ -42,7 +42,7 @@ progress_tracking:
   phase: packaged-desktop-runtime
   percent: 100
   blocker: none
-  last_completed_step: enforced window bounds and packaged desktop smoke passed
+  last_completed_step: ultrawide-scaled window bounds and packaged desktop smoke passed
   current_step: packaged desktop app updated and verified
   next_step: user visual verification from Start_Project_Command_Center.cmd
 
@@ -90,6 +90,7 @@ scope_lock:
     - assistant display state
     - desktop window defaults
     - desktop bounds enforcement
+    - work-area-relative window sizing
     - second-instance window focus/resize
     - desktop smoke test assertions
     - status update
@@ -110,20 +111,20 @@ facts:
   - The renderer already consumes safe ScannableEntry records and creates ProjectAnalysisSnapshot through the existing import pipeline.
   - Assistant responses were previously rendered in the bottom bar, making longer instructions hard to read while using the project surface.
   - The packaged desktop window needed explicit comfortable desktop sizing.
-  - Initial BrowserWindow size alone could still leave a user with an already-running small window if a second launch focused that existing instance.
+  - A fixed 1440px width still appears too small on ultrawide/high-resolution desktop screens.
 
 causal_bridge:
-  problem_observed: User reported that PCC still starts in a small window.
-  hypothesized_cause: Window size was configured only in BrowserWindow options, not re-applied at ready-to-show or second-instance focus time.
-  change_made: Added enforced comfortable bounds, primary-display centering, fullscreen/maximize normalization, minimum-size enforcement, and second-instance resize/focus behavior.
-  expected_effect: PCC launches as a large centered desktop workspace and clicking the launcher again resizes/focuses any existing PCC window instead of leaving it small.
+  problem_observed: User reported that PCC still starts far too small on the desktop.
+  hypothesized_cause: The prior enforced bounds still capped width at 1440px, which is small on the user's display.
+  change_made: Replaced the fixed width/height cap with work-area-relative sizing: roughly 90% width and 88% height, with safe margins and minimum size.
+  expected_effect: PCC launches as a large centered desktop workspace on both normal and ultrawide displays while still not being fullscreen.
   evidence_that_effect_happened:
     - corepack pnpm typecheck: pass
     - corepack pnpm test: pass, 43 tests
     - corepack pnpm build: pass
     - corepack pnpm desktop:pack: pass, exe generated
     - corepack pnpm desktop:smoke: pass, packaged exe launched, desktop mode active, no browser input, no localhost URL, native folder picker observed, smoke import created project using folder basename
-    - corepack pnpm desktop:smoke after enforced window bounds: pass
+    - corepack pnpm desktop:smoke after ultrawide-scaled window bounds: pass
     - corepack pnpm lint: pass
   causality_confidence: high
 
